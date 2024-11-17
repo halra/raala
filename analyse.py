@@ -62,10 +62,12 @@ class WorkloadEvaluator:
         self.summary_dir = os.path.join(self.analysis_results_dir, 'summary_tables')
         self.plot_dir = os.path.join(self.analysis_results_dir, 'plots')
         self.latex_dir = os.path.join(self.analysis_results_dir, 'latex')
+        self.markdown_dir = os.path.join(self.analysis_results_dir, 'markdown')
         os.makedirs(self.analysis_results_dir, exist_ok=True)
         os.makedirs(self.summary_dir, exist_ok=True)
         os.makedirs(self.latex_dir, exist_ok=True)
         os.makedirs(self.plot_dir, exist_ok=True)
+        os.makedirs(self.markdown_dir, exist_ok=True)
         self.mapping_helper = {
             'roberta': 'RoBERTa',
             'bert': 'BERT',
@@ -209,6 +211,12 @@ class WorkloadEvaluator:
         with open(latex_path, 'w') as f:
             f.write(latex_table)
         logger.info(f"LaTeX correlation table saved to {latex_path}")
+        
+        #save MD
+        md_path = os.path.join(self.markdown_dir, 'evaluation_metrics_for_base.md')
+        with open(md_path, 'w') as f:
+            f.write(results_df.to_markdown())
+        logger.info(f"Markdown table saved to {latex_path}")
 
         
     
@@ -293,6 +301,12 @@ class WorkloadEvaluator:
         with open(latex_path, 'w') as f:
             f.write(latex_table)
         logger.info(f"LaTeX correlation table saved to {latex_path}")
+        
+        #save MD
+        md_path = os.path.join(self.markdown_dir, 'human_vs_models_correlatio.md')
+        with open(md_path, 'w') as f:
+            f.write(latex_table_prepared.to_markdown())
+        logger.info(f"Markdown table saved to {md_path}")
 
 
     def scatter_plot_correlation_user_vs_models_entropy(self):
@@ -557,6 +571,11 @@ class WorkloadEvaluator:
                     with open(latex_path, 'w') as f:
                         f.write(latex_table)
                     logger.info(f"LaTeX correlation table saved to {latex_path}")
+                    #save MD
+                    md_path = os.path.join(self.markdown_dir, f'calculate_JSD_MSE_CORR_{model_path_fix}_{ds}_{tech}_{idx + 1}.md')
+                    with open(md_path, 'w') as f:
+                        f.write(summary_stats.to_markdown())
+                    logger.info(f"Markdown table saved to {md_path}")
 
 
     def proof_of_concept_ambiguity_sample_detection(self):
@@ -728,6 +747,12 @@ class WorkloadEvaluator:
                 with open(latex_path, 'w') as f:
                     f.write(latex_table)
                 logger.info(f"LaTeX correlation table saved to {latex_path}")
+                
+                #save MD
+                md_path = os.path.join(self.markdown_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.md')
+                with open(md_path, 'w') as f:
+                    f.write(summary_df.to_markdown())
+                logger.info(f"Markdown table saved to {md_path}")
 
                 plt.figure(figsize=(10, 8))
                 for tech in techniques:
@@ -855,7 +880,13 @@ class WorkloadEvaluator:
         latex_path = os.path.join(self.latex_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel.tex')
         with open(latex_path, 'w') as f:
             f.write(latex_table)
-        logger.info(f"LaTeX correlation table saved to {latex_path}")        
+        logger.info(f"LaTeX correlation table saved to {latex_path}")
+        
+        #save MD
+        md_path = os.path.join(self.markdown_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel.md')
+        with open(md_path, 'w') as f:
+            f.write(results_df.to_markdown())
+        logger.info(f"Markdown table saved to {md_path}")        
 
         def format_metric(mean, std, is_percentage=False):
             if is_percentage:
@@ -885,6 +916,12 @@ class WorkloadEvaluator:
         latex_path = os.path.join(self.latex_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel_formatted.tex')
         with open(latex_path, 'w') as f:
             f.write(latex_table)
+            
+        #save MD
+        md_path = os.path.join(self.markdown_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel_formatted.md')
+        with open(md_path, 'w') as f:
+            f.write(results_df.to_markdown())
+        logger.info(f"Markdown table saved to {md_path}")    
 
 
 
@@ -1013,7 +1050,13 @@ class WorkloadEvaluator:
             with open(latex_path, 'w') as f:
                 f.write(latex_table)
             logger.info(f"LaTeX correlation table saved to {latex_path}")
-            # Display the summary table
+            
+            #save MD
+            md_path = os.path.join(self.markdown_dir, f'prove_of_concept_ambiguity_sample_detection_combined_ROC_{model_path_fix}.md')
+            with open(md_path, 'w') as f:
+                f.write(summary_df.to_markdown())
+            logger.info(f"Markdown table saved to {md_path}")    
+            # Show the summary table
             #print("=== Summary Table ===\n")
             #print(summary_df.to_string(index=False))
 
@@ -1021,8 +1064,8 @@ class WorkloadEvaluator:
 
 if __name__ == "__main__":
     models = ['prajjwal1/bert-small'] # Models to use in the batch
-    datasets = ['hate_gap'] # datasets to use in the batch
-    techniques = ["baseline", "mc", "smoothing", "de"] # techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    datasets = ['hate_gap'] # Datasets to use in the batch
+    techniques = ["baseline", "mc", "smoothing", "de"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     num_runs = 3  # Number of runs per technique, the models have to be trained and exists in the saved_results folder
     enable_plotting = True  # Set to False to disable plotting # TODO impl plotting and verbose output.
 

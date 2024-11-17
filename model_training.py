@@ -30,6 +30,10 @@ def train_and_evaluate_models( # TODO add dropout, smooting  and debug flags
     epochs_list: List[int],
     num_samples: int = 100
 ):
+    
+    if len(techniques) != len(seeds_list) or len(techniques) != len(epochs_list):
+        logger.error("Seeds, epochs and techniques lists should be of equal length")
+        return
     for model_name in model_names:
         for idx, technique in  enumerate(techniques):
                 seeds = seeds_list[idx]
@@ -74,22 +78,27 @@ def main():
         'prajjwal1/bert-small'
     ]
     dataset_name = 'hate_gap'
+    
+    # TODO consider making a struct for the train_and_evaluate_models function
+    # TODO check that len of techniques is equal to len of seeds and epochs
+    # TODO add a function to train with different hyperparameters and consider thresholding them
     techniques = ['baseline','baseline','baseline', 'mc','mc','mc', 'smoothing','smoothing','smoothing', 'de', 'de','de']
 
     seeds_list = [
-        [42], [13], [815],
-        [42], [13], [815],
-        [142, 113, 1815, 1142, 1113],
-        [242, 213, 2815, 2142, 2113],
-        [342, 313, 3815, 3142, 3113]
+        [42], [13], [815], #baseline
+        [42], [13], [815], #mc
+        [42], [13], [815], #smoothing
+        [142, 113, 1815, 1142, 1113], #de
+        [242, 213, 2815, 2142, 2113], #de
+        [342, 313, 3815, 3142, 3113] #de
     ]
     epochs_list = [
-        [3], [4], [5],
-        [3], [4], [5],
-        [3], [4], [5],
-        [1, 2, 3, 4, 5],
-        [1, 2, 3, 4, 5],
-        [1, 2, 3, 4, 5]
+        [3], [4], [5], #baseline
+        [3], [4], [5], #mc
+        [3], [4], [5], #smoothing
+        [1, 2, 3, 4, 5], #de
+        [1, 2, 3, 4, 5], #de
+        [1, 2, 3, 4, 5] #de
     ]
 
     num_samples = 100  # mc dropout runs
