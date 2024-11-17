@@ -1,0 +1,8 @@
+/.venv
+/datasets
+/models
+/results
+/saved_results
+/workload
+/Logs
+*__pycache__
