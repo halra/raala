@@ -57,6 +57,7 @@ class ModelUtils:
         )
 
     def load_model(self, model_path: str):
+        model_path = os.path.join(model_path, "final-model.pt")
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at {model_path}")
         logger.info(f"Loading model from {model_path}")

@@ -44,6 +44,7 @@ class Workload:
         base_path = os.path.join(os.getcwd(), "saved_results", workload_name)
         save_df_path = os.path.join(base_path, "test.csv")
         save_results_path = os.path.join(base_path, "results.json")
+        saved_models_path = os.path.join(os.getcwd(), "models")
 
         if not quiet:
             logger.info(f"Loading DataFrame from: {save_df_path}")
@@ -73,7 +74,7 @@ class Workload:
         if load_models:
             for idx in range(len(workload.epochs)):
                 model_instance = ModelUtils(workload.name + str(idx), workload.model_name, workload.labels)
-                model_instance.load_model(workload.name + str(idx))
+                model_instance.load_model(os.path.join(saved_models_path, workload.name + str(idx)))
                 workload.models.append(model_instance)
 
         return workload

@@ -291,10 +291,11 @@ class WorkloadEvaluator:
                                         label='table:roberta_rotten_tomatoes_correlations',
                                         column_format='lllcr',
                                         escape=True)
+                    md_table_prepared = latex_table_prepared[['Technique','Dataset','Model','Mean Correlation','Std Dev %','Imp. over Baseline']]
 
                     #print(latex_table)
-        latex_table_prepared
-        latex_table_prepared =pd.DataFrame(columns=['Technique','Dataset','Model','Mean Correlation','Std Dev %','Imp. over Baseline'])
+        #latex_table_prepared
+        latex_table_prepared = pd.DataFrame(columns=['Technique','Dataset','Model','Mean Correlation','Std Dev %','Imp. over Baseline'])
         
         #print(latex_table)
         latex_path = os.path.join(self.latex_dir, 'human_vs_models_correlatio.tex')
@@ -305,7 +306,7 @@ class WorkloadEvaluator:
         #save MD
         md_path = os.path.join(self.markdown_dir, 'human_vs_models_correlatio.md')
         with open(md_path, 'w') as f:
-            f.write(latex_table_prepared.to_markdown())
+            f.write(md_table_prepared.to_markdown())
         logger.info(f"Markdown table saved to {md_path}")
 
 
@@ -452,7 +453,7 @@ class WorkloadEvaluator:
                     annotator_cols = [col for col in workload.df.columns if col.endswith('_probability')]
                     model_cols = [col for col in workload.df.columns if col.endswith('_probability_model')]
                     tabels[0][annotator_cols] = (tabels[0][annotator_cols] + tabels[1][annotator_cols] + tabels[2][annotator_cols]) / 3
-                    tabels[0][annotator_cols] = (tabels[0][model_cols] + tabels[1][model_cols] + tabels[2][model_cols]) / 3
+                    tabels[0][model_cols] = (tabels[0][model_cols] + tabels[1][model_cols] + tabels[2][model_cols]) / 3
 
                     df = tabels[0]
 
@@ -1063,6 +1064,11 @@ class WorkloadEvaluator:
 
 
 if __name__ == "__main__":
+    
+    #models = ['bert', 'roberta', 'xlnet'] # Models to use in the batch
+    #datasets = ['hate_gap', 'go_emotions', 'rt'] # Datasets to use in the batch
+    #techniques = ["baseline", "mc", "smoothing", "de"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    
     models = ['prajjwal1/bert-small'] # Models to use in the batch
     datasets = ['hate_gap'] # Datasets to use in the batch
     techniques = ["baseline", "mc", "smoothing", "de"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
