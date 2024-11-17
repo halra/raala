@@ -6,3 +6,4 @@
 /workload
 /Logs
 *__pycache__
+/analysis_results
