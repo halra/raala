@@ -13,7 +13,7 @@ def label_2_id_processor(df):
 
 model_path = "./models/test"
 NUM_CLASSES = 28
-NUM_EPOCHS = 6
+NUM_EPOCHS = 3
 BATCH_SIZE = 8
 # this is an example, a placeholder for the actual mapping
 LABEL_2_ID = {
@@ -185,13 +185,14 @@ for epoch in range(NUM_EPOCHS):
         
         
 print("Finished training, saving model...")
-
+from flair.models import TextClassifier
+from flair.data import Sentence
 
 
 #https://pytorch.org/tutorials/beginner/saving_loading_models.html
 
 from flair.embeddings import TransformerDocumentEmbeddings
-if False:
+if True:
     #DEBUG
     from flair.embeddings import TransformerDocumentEmbeddings
     from flair.models import TextClassifier
@@ -206,8 +207,37 @@ if False:
     # Load the classifier state dict into flair_classifier.classifier.
     #flair_classifier.classifier.load_state_dict(model.state_dict())
     missing_keys = flair_classifier.load_state_dict(model.state_dict(), strict=False)
-    flair_classifier.save(model_path)    
+    flair_classifier.save(model_path + "/final-model.pt")
+    print("SAVED")
+    
+    
+    cl = TextClassifier.load(model_path + "/final-model.pt")
+    print("LOADED")
+
     #END DEBUG
+
+
+for index, row in df.iterrows():
+    text = row["text"]
+    sentence = Sentence(text)
+    cl.predict(sentence, return_probabilities_for_all_classes=True)
+    #print(sentence.labels)
+    #print(sentence.labels[0].score)
+    #print(sentence.labels[0].value)
+    print(f"Text: {sentence.text}")
+    print(f"Predicted Label: {sentence.labels[0].value} with probability: {sentence.labels[0].score:.4f}")
+    print("-" * 40)
+
+
+
+
+##################################################################################
+# THE REST IS NOT NEEDED ANYMORE, IT WAS ONLY FOR TESTS!!!!
+##################################################################################
+
+if True:
+    print("ABORTED on purpose")
+    exit(0)
 
 
 #torch.save(model.state_dict(), model_path)
@@ -215,8 +245,7 @@ if False:
 
 
 
-from flair.models import TextClassifier
-from flair.data import Sentence
+
 
 #classifier = TextClassifier.load(model_path)
 #sentence = Sentence("Sum random text")
@@ -297,16 +326,30 @@ document_embeddings.state_dict()
 #DEBUG3 Save
 #https://discuss.pytorch.org/t/missing-keys-unexpected-keys-in-state-dict-when-loading-self-trained-model/22379/13
 #https://flairnlp.github.io/flair/v0.13.1/api/flair.models.html#flair.models.TextClassifier
+# https://github.com/flairNLP/flair/blob/master/flair/models/text_classification_model.py#L64 <---- this one kinda is the needed code
+
+embeddings = document_embeddings.state_dict()
+# embeddings_name: str  # class-variable referring to the "class embedding name"
+# as found in https://github.com/flairNLP/flair/blob/master/flair/embeddings/transformer.py#L764
+embeddings["__cls__"] = "TransformerEmbeddings" # no idea what key to chose ... 
+
+
+
+
 torch.save({
+                'model': model, # BertForSequenceClassification
                 'epoch': NUM_EPOCHS,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'state_dict': model.state_dict(),
+                "label_dictionary": LABEL_2_ID,
                 #'loss_histories': loss_histories,
                 "embeddings": document_embeddings.state_dict(),
+                "document_embeddings": embeddings, # "document_embeddings": self.embeddings.save_embeddings(use_state_dict=False),
                 }, model_path)
 
 
+#decoder
 #END DEBUG 3 Save
 
 
