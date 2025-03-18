@@ -1,43 +1,51 @@
+import os
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pandas as pd
+from torch.utils.data import Dataset, DataLoader
+from transformers import BertForSequenceClassification, BertTokenizer
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+
+#logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Constants
+MODEL_PATH = "./models/test"
+NUM_EPOCHS = 3
+BATCH_SIZE = 8
+MODEL_NAME = "bert-base-uncased"
+
+# -----------------------------------------------------------------------------
+# Helper Functions
+# -----------------------------------------------------------------------------
 def label_2_id_processor(df):
     label_columns = [col for col in df.columns if col.endswith("_probability")]
     labels = [col.replace("_probability", "") for col in label_columns]
-    labels = sorted(labels) # just cause we can
+    labels = sorted(labels)  # Sorting for consistent ordering
     LABEL_2_ID = {label: idx for idx, label in enumerate(labels)}
-    print(LABEL_2_ID)
+    logger.info(f"Generated LABEL_2_ID mapping: {LABEL_2_ID}")
     return LABEL_2_ID
 
-
-model_path = "./models/test"
-NUM_CLASSES = 28
-NUM_EPOCHS = 3
-BATCH_SIZE = 8
-# this is an example, a placeholder for the actual mapping
-LABEL_2_ID = {
-    "admiration": 0,
-    "amusement": 1,
-    "...": 9999
-    }
-
+# -----------------------------------------------------------------------------
+# Custom Loss with Label Smoothing
+# -----------------------------------------------------------------------------
 class LabelSmoothingCrossEntropyLoss(nn.Module):
     def __init__(self, num_classes, reduction="mean"):
-
         super(LabelSmoothingCrossEntropyLoss, self).__init__()
         self.num_classes = num_classes
         self.reduction = reduction
 
-    def forward(self, logits, smoothing):
-        
+    def forward(self, logits, soft_labels):
+        #print("soft_labels", soft_labels[0]) # just look at the first element form the batch
         loss = nn.CrossEntropyLoss()
-        output = loss(logits, smoothing)
+        output = loss(logits, soft_labels)
         if True:
             return output
-        # this is not needed when we use CrossEntropyLoss
         log_probs = F.log_softmax(logits, dim=-1)
-        loss = -(smoothing * log_probs).sum(dim=-1)
+        loss = -(soft_labels * log_probs).sum(dim=-1)
         if self.reduction == "mean":
             return loss.mean()
         elif self.reduction == "sum":
@@ -45,18 +53,15 @@ class LabelSmoothingCrossEntropyLoss(nn.Module):
         else:
             return loss
 
-
-from torch.utils.data import Dataset
-
+# -----------------------------------------------------------------------------
+# Custom Dataset
+# -----------------------------------------------------------------------------
 class CustomDataset(Dataset):
     def __init__(self, dataframe, tokenizer, max_length, num_classes):
         self.dataframe = dataframe
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.num_classes = num_classes
-        
-        # mapping from string labels to integers
-
 
     def __len__(self):
         return len(self.dataframe)
@@ -65,16 +70,15 @@ class CustomDataset(Dataset):
         row = self.dataframe.iloc[idx]
         text = row["text"]
         label_str = row["gold_label"].strip().lower()
+        # Use global LABEL_2_ID mapping (processed later)
         gold_class = LABEL_2_ID.get(label_str, 0)
-        #print("gold_class", gold_class, "label_str", label_str)
-        highest_agreement = row["highest_agreement"] 
-        
-        
-        # this assumes that only the gold label is unique and the rest is disributed equally ...  tho that is ok, since we onyl eval. on the gold_label
-        soft_label = [ (1 - highest_agreement) / (self.num_classes - 1) ] * self.num_classes
+        highest_agreement = row["highest_agreement"]
+
+        # gold_label gets highest_agreement and others share the remainder.
+        soft_label = [(1 - highest_agreement) / (self.num_classes - 1)] * self.num_classes
         soft_label[gold_class] = highest_agreement
         soft_label = torch.tensor(soft_label, dtype=torch.float)
-        
+
         encoding = self.tokenizer.encode_plus(
             text,
             add_special_tokens=True,
@@ -84,277 +88,135 @@ class CustomDataset(Dataset):
             return_attention_mask=True,
             return_tensors="pt"
         )
-        
         return {
-            "input_ids": encoding["input_ids"].squeeze(0),          
-            "attention_mask": encoding["attention_mask"].squeeze(0), 
+            "input_ids": encoding["input_ids"].squeeze(0),
+            "attention_mask": encoding["attention_mask"].squeeze(0),
             "soft_label": soft_label,
             "debug_text": text
         }
-        
-from torch.utils.data import DataLoader
-from transformers import BertForSequenceClassification, BertTokenizer
-import pandas as pd
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
 
+# -----------------------------------------------------------------------------
+# Main Training and Evaluation Function
+# -----------------------------------------------------------------------------
+def train_and_evaluate():
+    logger.info("Loading data...")
+    df = pd.read_csv("./workload/train.csv") # TODO lead train and validate on dev and test .... 
+    df_dev = pd.read_csv("./workload/dev.csv")
+    global LABEL_2_ID
+    LABEL_2_ID = label_2_id_processor(df)
+    num_classes = len(LABEL_2_ID)
+    logger.info(f"Number of classes: {num_classes}")
+    
+    tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
+    dataset = CustomDataset(dataframe=df, tokenizer=tokenizer, max_length=128, num_classes=num_classes)
+    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+    dataset_dev = CustomDataset(dataframe=df_dev, tokenizer=tokenizer, max_length=128, num_classes=num_classes)
+    dataloader_dev = DataLoader(dataset_dev, batch_size=BATCH_SIZE, shuffle=True)
 
-print("Loading data...")
-df = pd.read_csv("./workload/train.csv")
-LABEL_2_ID = label_2_id_processor(df)
-NUM_CLASSES = len(LABEL_2_ID)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logger.info(f"Using device: {device}")
 
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    model = BertForSequenceClassification.from_pretrained(MODEL_NAME, num_labels=num_classes)
+    model.to(device)
 
-dataset = CustomDataset(dataframe=df, tokenizer=tokenizer, max_length=128, num_classes=NUM_CLASSES)
+    loss_fn = LabelSmoothingCrossEntropyLoss(num_classes=num_classes)
+    loss_fn.to(device)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
 
-dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True) # use batch size 1 to better debug
-
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("Using device:", device)
-
-model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=NUM_CLASSES)
-model.to(device)
-
-
-loss_fn = LabelSmoothingCrossEntropyLoss(num_classes=NUM_CLASSES)
-loss_fn.to(device)
-
-optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
-
-
-
-
-print("Starting training with soft labels...")
-for epoch in range(NUM_EPOCHS):
-    epoch_losses = []
-    model.train()
-    for batch in dataloader:
-        input_ids = batch["input_ids"].to(device)
-        attention_mask = batch["attention_mask"].to(device)
-        soft_labels = batch["soft_label"].to(device)
-        #print("soft_labels", soft_labels[0]) # only peek at first soft label
-        #print("debug_text", batch["debug_text"][0]) # peek at first text
-
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = outputs.logits  
-        
-        loss = loss_fn(logits, soft_labels)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-
-        epoch_losses.append(loss.item())
-        #print(f"Epoch {epoch+1}, Loss: {loss.item()}")
-        
-    # Evaluation
-    model.eval()
-    all_preds = []
-    all_true = []
-    with torch.no_grad():
+    logger.info("Starting training with soft labels...")
+    for epoch in range(NUM_EPOCHS):
+        epoch_losses = []
+        model.train()
         for batch in dataloader:
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             soft_labels = batch["soft_label"].to(device)
-            
+
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             logits = outputs.logits
-            
-            # predicted classes
-            preds = torch.argmax(logits, dim=1)
-            # gold class has highest probability
-            true_labels = torch.argmax(soft_labels, dim=1)
-            
-            all_preds.extend(preds.cpu().numpy())
-            all_true.extend(true_labels.cpu().numpy())
-    
-    acc = accuracy_score(all_true, all_preds)
-    prec = precision_score(all_true, all_preds, average='weighted', zero_division=0)
-    rec = recall_score(all_true, all_preds, average='weighted', zero_division=0)
-    f1 = f1_score(all_true, all_preds, average='weighted', zero_division=0)
-    
-    print(f"\nEpoch {epoch+1} Evaluation:")
-    print(f"Average Training Loss: {sum(epoch_losses)/len(epoch_losses):.4f}")
-    print(f"Accuracy: {acc:.4f}")
-    print(f"Precision: {prec:.4f}")
-    print(f"Recall: {rec:.4f}")
-    print(f"F1 Score: {f1:.4f}")
-    print("Classification Report:")
-    print(classification_report(all_true, all_preds, zero_division=0))
-    print("-" * 60)
-        
-        
-print("Finished training, saving model...")
-from flair.models import TextClassifier
-from flair.data import Sentence
+            loss = loss_fn(logits, soft_labels)
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
+            epoch_losses.append(loss.item())
 
+        avg_loss = sum(epoch_losses) / len(epoch_losses)
+        logger.info(f"Epoch {epoch+1}/{NUM_EPOCHS} - Average Training Loss: {avg_loss:.4f}")
 
-#https://pytorch.org/tutorials/beginner/saving_loading_models.html
+        # Evaluation
+        model.eval()
+        all_preds = []
+        all_true = []
+        with torch.no_grad():
+            for batch in dataloader_dev:
+                input_ids = batch["input_ids"].to(device)
+                attention_mask = batch["attention_mask"].to(device)
+                soft_labels = batch["soft_label"].to(device)
 
-from flair.embeddings import TransformerDocumentEmbeddings
-if True:
-    #DEBUG
+                outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+                logits = outputs.logits
+                preds = torch.argmax(logits, dim=1)
+                true_labels = torch.argmax(soft_labels, dim=1)
+                all_preds.extend(preds.cpu().numpy())
+                all_true.extend(true_labels.cpu().numpy())
+
+        acc = accuracy_score(all_true, all_preds)
+        prec = precision_score(all_true, all_preds, average='weighted', zero_division=0)
+        rec = recall_score(all_true, all_preds, average='weighted', zero_division=0)
+        f1 = f1_score(all_true, all_preds, average='weighted', zero_division=0)
+        logger.info(f"Epoch {epoch+1} Evaluation:")
+        logger.info(f"  Accuracy: {acc:.4f}")
+        logger.info(f"  Precision: {prec:.4f}")
+        logger.info(f"  Recall: {rec:.4f}")
+        logger.info(f"  F1 Score: {f1:.4f}")
+        logger.info("Classification Report:")
+        logger.info("\n" + classification_report(all_true, all_preds, zero_division=0))
+        logger.info("-" * 60)
+
+    # -----------------------------------------------------------------------------
+    # Save the model in a Flair-compatible format
+    # -----------------------------------------------------------------------------
+    logger.info("Finished training, saving model using Flair format...")
     from flair.embeddings import TransformerDocumentEmbeddings
     from flair.models import TextClassifier
     from flair.data import Dictionary
 
-    document_embeddings = TransformerDocumentEmbeddings('bert-base-uncased')
     label_dict = Dictionary(add_unk=False)
-    for label in ["hate", "no_hate"]:
+    for label in sorted(LABEL_2_ID.keys()):
         label_dict.add_item(label)
+    document_embeddings = TransformerDocumentEmbeddings(MODEL_NAME) 
     flair_classifier = TextClassifier(document_embeddings, label_dictionary=label_dict, label_type="label_gold")
-
-    # Load the classifier state dict into flair_classifier.classifier.
-    #flair_classifier.classifier.load_state_dict(model.state_dict())
     missing_keys = flair_classifier.load_state_dict(model.state_dict(), strict=False)
-    flair_classifier.save(model_path + "/final-model.pt")
-    print("SAVED")
-    
-    
-    cl = TextClassifier.load(model_path + "/final-model.pt")
-    print("LOADED")
+    #logger.info(f"Missing keys when loading state dict into Flair classifier: {missing_keys}")
+    flair_save_path = os.path.join(MODEL_PATH, "final-model.pt")
+    flair_classifier.save(flair_save_path)
+    logger.info(f"Flair model saved at: {flair_save_path}")
 
-    #END DEBUG
+    return model, flair_classifier, tokenizer, device, LABEL_2_ID
 
+# -----------------------------------------------------------------------------
+# Inference Function Using Flair
+# -----------------------------------------------------------------------------
+def run_inference(flair_classifier, df):
+    from flair.data import Sentence
+    logger.info("Running inference on dataset...")
+    for index, row in df.iterrows():
+        text = row["text"]
+        sentence = Sentence(text)
+        #flair_classifier.predict(sentence, return_probabilities_for_all_classes=True)
+        flair_classifier.predict(sentence, return_probabilities_for_all_classes=False)
+        pred_label = sentence.labels[0].value
+        pred_prob = sentence.labels[0].score
+        logger.info(f"Text: {sentence.text}")
+        logger.info(f"Predicted Label: {pred_label} with probability: {pred_prob:.4f}")
+        logger.info("-" * 40)
 
-for index, row in df.iterrows():
-    text = row["text"]
-    sentence = Sentence(text)
-    cl.predict(sentence, return_probabilities_for_all_classes=True)
-    #print(sentence.labels)
-    #print(sentence.labels[0].score)
-    #print(sentence.labels[0].value)
-    print(f"Text: {sentence.text}")
-    print(f"Predicted Label: {sentence.labels[0].value} with probability: {sentence.labels[0].score:.4f}")
-    print("-" * 40)
-
-
-
-
-##################################################################################
-# THE REST IS NOT NEEDED ANYMORE, IT WAS ONLY FOR TESTS!!!!
-##################################################################################
-
-if True:
-    print("ABORTED on purpose")
-    exit(0)
-
-
-#torch.save(model.state_dict(), model_path)
-
-
-
-
-
-
-#classifier = TextClassifier.load(model_path)
-#sentence = Sentence("Sum random text")
-#model.classifier.predict(sentence, return_probabilities_for_all_classes=True)
-#print(sentence.labels)
-#print(sentence.labels[0].score)
-
-
-
-#DEBUG 2
-
-def predict_text(text, model, tokenizer, device, id2label, max_length=128):
-    encoding = tokenizer.encode_plus(
-        text,
-        add_special_tokens=True,
-        max_length=max_length,
-        padding='max_length',
-        truncation=True,
-        return_attention_mask=True,
-        return_tensors='pt'
-    )
-    input_ids = encoding['input_ids'].to(device)
-    attention_mask = encoding['attention_mask'].to(device)
-    
-    # Inference
-    with torch.no_grad():
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = outputs.logits
-        probabilities = torch.softmax(logits, dim=-1)
-        predicted_class = torch.argmax(probabilities, dim=-1)
-    
-    #human-readable label
-    predicted_id = predicted_class.item()
-    predicted_label = id2label.get(predicted_id)
-    
-    #print("Text:", text)
-    #print("Predicted Label:", predicted_label)
-    probs = probabilities.cpu().numpy()[0]  # Assuming batch size 1
-    predicted_probability = probabilities.cpu().numpy()[0][predicted_id]
-    #print("Probabilities per label:")
-    for idx, prob in enumerate(probs):
-        label_name = id2label.get(idx)
-        #print(f"  {label_name}: {prob:.4f}")
-    #print("-" * 40)
-    
-    return predicted_label, predicted_probability
-    
-# get label from integer 
-id2label = {v: k for k, v in LABEL_2_ID.items()}
-model.eval()   
-    
-#for index, row in df.iterrows():
-#    text = row["text"]
-#    predicted_label, predicted_probability = predict_text(text, model, tokenizer, device, id2label)
-#    print(f"Text: {text}")
-#    print(f"Predicted Label: {predicted_label} with probability: {predicted_probability:.4f}")
-#    print("-" * 40)
-    
-    
-#torch.save({
-#    'state_dict': model.state_dict(),
-#    'num_labels': NUM_CLASSES,
-#    'bert_model_path': 'finetuned_bert'
-#}, model_path)
-
-
-#https://github.com/flairNLP/flair/issues/2072
-import os
-model_path = os.path.join(os.getcwd(), "models", "test")
-os.makedirs(model_path, exist_ok=True)
-
-#model.save_pretrained(model_path)
-model_path = os.path.join(model_path, "final-model.pt")
-
-document_embeddings = TransformerDocumentEmbeddings('bert-base-uncased')
-document_embeddings.state_dict()
-
-#DEBUG3 Save
-#https://discuss.pytorch.org/t/missing-keys-unexpected-keys-in-state-dict-when-loading-self-trained-model/22379/13
-#https://flairnlp.github.io/flair/v0.13.1/api/flair.models.html#flair.models.TextClassifier
-# https://github.com/flairNLP/flair/blob/master/flair/models/text_classification_model.py#L64 <---- this one kinda is the needed code
-
-embeddings = document_embeddings.state_dict()
-# embeddings_name: str  # class-variable referring to the "class embedding name"
-# as found in https://github.com/flairNLP/flair/blob/master/flair/embeddings/transformer.py#L764
-embeddings["__cls__"] = "TransformerEmbeddings" # no idea what key to chose ... 
-
-
-
-
-torch.save({
-                'model': model, # BertForSequenceClassification
-                'epoch': NUM_EPOCHS,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'state_dict': model.state_dict(),
-                "label_dictionary": LABEL_2_ID,
-                #'loss_histories': loss_histories,
-                "embeddings": document_embeddings.state_dict(),
-                "document_embeddings": embeddings, # "document_embeddings": self.embeddings.save_embeddings(use_state_dict=False),
-                }, model_path)
-
-
-#decoder
-#END DEBUG 3 Save
-
-
-
-print("Finished saving model")
-
-
-TextClassifier.load(model_path)
+# -----------------------------------------------------------------------------
+# Main Entry Point
+# -----------------------------------------------------------------------------
+from flair.models import TextClassifier
+if __name__ == "__main__":
+    trained_model, flair_cl, tokenizer, device, label2id = train_and_evaluate()
+    df_test = pd.read_csv("./workload/test.csv")
+    cl = TextClassifier.load(MODEL_PATH + "/final-model.pt")
+    run_inference(cl, df_test)
