@@ -77,18 +77,28 @@ dataset = CustomDataset(dataframe=df, tokenizer=tokenizer, max_length=128, num_c
 
 dataloader = DataLoader(dataset, batch_size=8, shuffle=True) # use batch size 1 to better debug
 
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Using device:", device)
+
 model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
+model.to(device)
+
+
 loss_fn = LabelSmoothingCrossEntropyLoss(num_classes=3)
+loss_fn.to(device)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
+
+
 
 model.train()
 print("Starting training with soft labels...")
 for epoch in range(2):
     for batch in dataloader:
-        input_ids = batch["input_ids"]
-        attention_mask = batch["attention_mask"]
-        soft_labels = batch["soft_label"] 
+        input_ids = batch["input_ids"].to(device)
+        attention_mask = batch["attention_mask"].to(device)
+        soft_labels = batch["soft_label"].to(device)
         print("soft_labels", soft_labels) # print #batch size labels
 
         outputs = model(input_ids=input_ids, attention_mask=attention_mask)
