@@ -61,7 +61,8 @@ class CustomDataset(Dataset):
         return {
             "input_ids": encoding["input_ids"].squeeze(0),          
             "attention_mask": encoding["attention_mask"].squeeze(0), 
-            "soft_label": soft_label
+            "soft_label": soft_label,
+            "debug_text": text
         }
         
 from torch.utils.data import DataLoader
@@ -94,12 +95,13 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
 
 model.train()
 print("Starting training with soft labels...")
-for epoch in range(2):
+for epoch in range(6):
     for batch in dataloader:
         input_ids = batch["input_ids"].to(device)
         attention_mask = batch["attention_mask"].to(device)
         soft_labels = batch["soft_label"].to(device)
-        print("soft_labels", soft_labels) # print #batch size labels
+        print("soft_labels", soft_labels[0]) # only peek at first soft label
+        print("debug_text", batch["debug_text"][0]) # peek at first text
 
         outputs = model(input_ids=input_ids, attention_mask=attention_mask)
         logits = outputs.logits  
