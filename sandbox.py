@@ -9,19 +9,9 @@ class LabelSmoothingCrossEntropyLoss(nn.Module):
         self.num_classes = num_classes
         self.reduction = reduction
 
-    def forward(self, logits, target, smoothing):
-        log_probs = F.log_softmax(logits, dim=-1)  
-        
-        one_hot = torch.zeros_like(log_probs)
-        one_hot.scatter_(1, target.unsqueeze(1), 1.0)
-        
-        smoothing = smoothing.unsqueeze(1)
-        
-        smooth_labels = one_hot * (1.0 - smoothing) + (1.0 - one_hot) * (smoothing / (self.num_classes - 1))
-        
-        loss = -torch.sum(smooth_labels * log_probs, dim=-1)
-        
-        # Is this needed ?
+    def forward(self, logits, smoothing):
+        log_probs = F.log_softmax(logits, dim=-1)
+        loss = -(smoothing * log_probs).sum(dim=-1)
         if self.reduction == "mean":
             return loss.mean()
         elif self.reduction == "sum":
@@ -33,10 +23,11 @@ class LabelSmoothingCrossEntropyLoss(nn.Module):
 from torch.utils.data import Dataset
 
 class CustomDataset(Dataset):
-    def __init__(self, dataframe, tokenizer, max_length):
+    def __init__(self, dataframe, tokenizer, max_length, num_classes):
         self.dataframe = dataframe
         self.tokenizer = tokenizer
         self.max_length = max_length
+        self.num_classes = num_classes
         
         # mapping from string labels to integers
         self.label2id = {"hate": 1, "no_hate": 0}
@@ -47,10 +38,16 @@ class CustomDataset(Dataset):
     def __getitem__(self, idx):
         row = self.dataframe.iloc[idx]
         text = row["text"]
-        label_str = row["gold_label"].strip().lower()  
-        label = self.label2id.get(label_str, 0)  # 0 if label is not found
-        smoothing = row["highest_agreement"]
-
+        label_str = row["gold_label"].strip().lower()
+        gold_class = self.label2id.get(label_str, 0) 
+        highest_agreement = row["highest_agreement"] 
+        
+        
+        # this assumes that only the gold label is unique and the rest is disributed equally ...  tho that is ok, since we onyl eval. on the gold_label
+        soft_label = [ (1 - highest_agreement) / (self.num_classes - 1) ] * self.num_classes
+        soft_label[gold_class] = highest_agreement
+        soft_label = torch.tensor(soft_label, dtype=torch.float)
+        
         encoding = self.tokenizer.encode_plus(
             text,
             add_special_tokens=True,
@@ -60,13 +57,13 @@ class CustomDataset(Dataset):
             return_attention_mask=True,
             return_tensors="pt"
         )
-
+        
         return {
-            "input_ids": encoding["input_ids"].squeeze(0),         
+            "input_ids": encoding["input_ids"].squeeze(0),          
             "attention_mask": encoding["attention_mask"].squeeze(0), 
-            "label": torch.tensor(label, dtype=torch.long),
-            "smoothing": torch.tensor(smoothing, dtype=torch.float)
+            "soft_label": soft_label
         }
+        
 from torch.utils.data import DataLoader
 from transformers import BertForSequenceClassification, BertTokenizer
 import pandas as pd
@@ -75,32 +72,31 @@ print("Loading data...")
 df = pd.read_csv("./workload/train.csv")
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-dataset = CustomDataset(dataframe=df, tokenizer=tokenizer, max_length=128)
-dataloader = DataLoader(dataset, batch_size=8, shuffle=True)
 
-model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=3)
+dataset = CustomDataset(dataframe=df, tokenizer=tokenizer, max_length=128, num_classes=2)
+
+dataloader = DataLoader(dataset, batch_size=8, shuffle=True) # use batch size 1 to better debug
+
+model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
 loss_fn = LabelSmoothingCrossEntropyLoss(num_classes=3)
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
 
 model.train()
-print("Starting training...")
-for epoch in range(3):
+print("Starting training with soft labels...")
+for epoch in range(2):
     for batch in dataloader:
         input_ids = batch["input_ids"]
         attention_mask = batch["attention_mask"]
-        labels = batch["label"]
-        smoothing = batch["smoothing"]  # this is what we want!
-        #print("batch", batch)
-        print("smoothing", smoothing)
-        print("batch['label']", batch["label"])
-        #print("batch['text']", batch["text"])
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = outputs.logits
+        soft_labels = batch["soft_label"] 
+        print("soft_labels", soft_labels) # print #batch size labels
 
-        loss = loss_fn(logits, labels, smoothing)
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+        logits = outputs.logits  
+        
+        loss = loss_fn(logits, soft_labels)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
 
-        print(f"Loss: {loss.item()}")
+        print(f"Epoch {epoch+1}, Loss: {loss.item()}")
