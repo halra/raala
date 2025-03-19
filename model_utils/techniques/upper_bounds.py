@@ -113,6 +113,7 @@ class Upper_bounds_trainer():
     def _label_2_id_processor(self, df):
         label_columns = [col for col in df.columns if col.endswith("_probability")]
         labels = [col.replace("_probability", "") for col in label_columns]
+        labels.append("<unk>")  # Add 'other' class for non-annotated data
         labels = sorted(labels)  # Sorting for consistent ordering
         LABEL_2_ID = {label: idx for idx, label in enumerate(labels)}
         logger.info(f"Generated LABEL_2_ID mapping: {LABEL_2_ID}")

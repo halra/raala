@@ -7,7 +7,9 @@ import pandas as pd
 from torch.utils.data import Dataset, DataLoader
 from transformers import BertForSequenceClassification, BertTokenizer
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
-
+from transformers import (
+    AutoTokenizer
+)
 #logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 MODEL_PATH = "./models/test"
 NUM_EPOCHS = 10
 BATCH_SIZE = 8
-MODEL_NAME = "bert-base-uncased"
+MODEL_NAME = "google-bert/bert-base-uncased"
 
 # -----------------------------------------------------------------------------
 # Helper Functions
@@ -107,7 +109,9 @@ def train_and_evaluate():
     num_classes = len(LABEL_2_ID)
     logger.info(f"Number of classes: {num_classes}")
     
-    tokenizer = BertTokenizer.from_pretrained(MODEL_NAME)
+    tokenizer = AutoTokenizer.from_pretrained(
+            MODEL_NAME,
+    )
     dataset = CustomDataset(dataframe=df, tokenizer=tokenizer, max_length=128, num_classes=num_classes)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
     dataset_dev = CustomDataset(dataframe=df_dev, tokenizer=tokenizer, max_length=128, num_classes=num_classes)
@@ -121,7 +125,7 @@ def train_and_evaluate():
 
     loss_fn = LabelSmoothingCrossEntropyLoss(num_classes=num_classes)
     loss_fn.to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
 
     logger.info("Starting training with soft labels...")
     for epoch in range(NUM_EPOCHS):
