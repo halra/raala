@@ -12,6 +12,7 @@ from flair.trainers import ModelTrainer
 import flair
 import logging
 from typing import List, Optional
+#from model_utils.techniques.upper_bounds import Upper_bounds_trainer
 
 logger = logging.getLogger(__name__)
 

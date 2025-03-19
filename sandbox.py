@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MODEL_PATH = "./models/test"
-NUM_EPOCHS = 3
+NUM_EPOCHS = 10
 BATCH_SIZE = 8
 MODEL_NAME = "bert-base-uncased"
 
@@ -202,13 +202,14 @@ def run_inference(flair_classifier, df):
     logger.info("Running inference on dataset...")
     for index, row in df.iterrows():
         text = row["text"]
+        highest_agreement = row["highest_agreement"]
         sentence = Sentence(text)
         #flair_classifier.predict(sentence, return_probabilities_for_all_classes=True)
         flair_classifier.predict(sentence, return_probabilities_for_all_classes=False)
         pred_label = sentence.labels[0].value
         pred_prob = sentence.labels[0].score
         logger.info(f"Text: {sentence.text}")
-        logger.info(f"Predicted Label: {pred_label} with probability: {pred_prob:.4f}")
+        logger.info(f"Predicted Label: {pred_label} with probability: {pred_prob:.4f} and highest agreement: {highest_agreement:.4f}")
         logger.info("-" * 40)
 
 # -----------------------------------------------------------------------------

@@ -9,6 +9,7 @@ from model_utils.model_utils import ModelUtils
 from utils.ModelEvaluator_utils import ModelEvaluator
 from utils.plotting_utils import PlottingUtils
 from utils.ambi_utils import AmbiUtils
+from model_utils.techniques.upper_bounds import Upper_bounds_trainer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -126,17 +127,22 @@ class Workload:
         )
         return workload
 
-    def train(self, smoothing: float = 0.0, dropout: Optional[float] = None):
+    def train(self, smoothing: float = 0.0, dropout: Optional[float] = None, training_type: str = "ensemble"):
         for idx, model in enumerate(self.models):
             max_epochs = self.epochs[idx]
             seed = self.seeds[idx]
 
-            if dropout is not None:
+            if dropout is not None and training_type != "ub":
                 logger.info(f"Training model {idx} with dropout={dropout}, smoothing={smoothing}")
                 model.train_with_dropout(max_epochs=max_epochs, seed=seed, dropout=dropout, smoothing=smoothing)
-            else:
+            elif training_type != "ub":
                 logger.info(f"Training model {idx} with smoothing={smoothing}")
                 model.train(max_epochs=max_epochs, seed=seed, smoothing=smoothing)
+            elif training_type == "ub":
+                logger.info(f"Training model {idx} with upper_bounds")
+                ub_trainer = Upper_bounds_trainer(instance_name=self.name, model_name=self.model_name)
+                ub_trainer.train(max_epochs=max_epochs, seed=seed, smoothing=smoothing)
+                
 
     def evaluate(self, evaluation_type: str = "ensemble", debug: bool = False, num_samples: int = 100):
         logger.info(f"Requested evaluation type: {evaluation_type}. Starting evaluation...")

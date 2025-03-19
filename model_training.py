@@ -59,8 +59,8 @@ def train_and_evaluate_models( # TODO add dropout, smooting  and debug flags
                         num_samples=num_samples
                     )
                 elif technique == 'ub':
-                    workload.train(smoothing=0.3)
-                    workload.evaluate(debug=False)
+                    workload.train(training_type='ub')
+                    workload.evaluate(debug=False) 
                 elif technique == 'smoothing':
                     workload.train(smoothing=0.3)
                     workload.evaluate(debug=False)
@@ -78,30 +78,22 @@ def main():
     #    'bert-base'
     #]
     model_names = [
-        'prajjwal1/bert-small'
+        'google-bert/bert-base-uncased',
+        'FacebookAI/roberta-base',
+        'xlnet/xlnet-base-cased'
     ]
-    dataset_name = 'hate_gap'
+    dataset_name = 'go_emotions' 
     
     # TODO consider making a struct for the train_and_evaluate_models function
     # TODO check that len of techniques is equal to len of seeds and epochs
     # TODO add a function to train with different hyperparameters and consider thresholding them
-    techniques = ['baseline','baseline','baseline', 'mc','mc','mc', 'smoothing','smoothing','smoothing', 'de', 'de','de']
+    techniques = ['ub', 'ub','ub']
 
     seeds_list = [
         [42], [13], [815], #baseline
-        [42], [13], [815], #mc
-        [42], [13], [815], #smoothing
-        [142, 113, 1815, 1142, 1113], #de
-        [242, 213, 2815, 2142, 2113], #de
-        [342, 313, 3815, 3142, 3113] #de
     ]
     epochs_list = [
-        [3], [4], [5], #baseline
-        [3], [4], [5], #mc
-        [3], [4], [5], #smoothing
-        [1, 2, 3, 4, 5], #de
-        [1, 2, 3, 4, 5], #de
-        [1, 2, 3, 4, 5] #de
+        [10], [10], [10], #baseline
     ]
 
     num_samples = 100  # mc dropout runs

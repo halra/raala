@@ -79,7 +79,8 @@ class WorkloadEvaluator:
             'mc': 'MC Dropout',
             'smoothing': 'Label Smoothing',
             'de': 'Deep Ensemble',
-            'prajjwal1/bert-small' :'prajjwal1-bert-small'
+            'prajjwal1/bert-small' :'prajjwal1-bert-small',
+            'ub': 'Upper Bound'
         }
 
     ## Helper Functions
@@ -266,6 +267,7 @@ class WorkloadEvaluator:
                         mean_std_corr_df[diff_col_name] = mean_std_corr_df[diff_col_name].round(4)
 
                     
+                    base_value = 1
                     if tech == "baseline":
                         base_value = mean_std_corr_df['Mean Correlation'][1] # 1 is entropy
                     
@@ -275,7 +277,7 @@ class WorkloadEvaluator:
                         coeff = 1
                         
                     #print((mean_std_corr_df['Mean Correlation'][1] / base_value))
-                    
+                    base_value = 1
                     
                     if model in self.mapping_helper:
                         model_name = self.mapping_helper[model]
@@ -778,19 +780,6 @@ class WorkloadEvaluator:
 
 
     def proof_of_concept_ambiguity_sample_detection_latex_tabel(self):
-        mapping_helper = {
-            'roberta': 'RoBERTa',
-            'bert': 'BERT',
-            'xlnet': 'XLNet',
-            'rt': 'RT',
-            'go_emotions': 'GoEmotions',
-            'hate_gap': 'GAB Hate',
-            'baseline': 'Baseline',
-            'mc': 'MC Dropout',
-            'smoothing': 'Smoothing',
-            'de': 'Deep Ensemble'
-        }
-
         results_list = []
 
         for ds in datasets:
@@ -854,8 +843,8 @@ class WorkloadEvaluator:
                         model_name = model
                     
                     results_list.append({
-                        'Technique': mapping_helper[tech],
-                        'Dataset': mapping_helper[ds],
+                        'Technique': self.mapping_helper[tech],
+                        'Dataset': self.mapping_helper[ds],
                         'Model': model_name,
                         'Mean Error Rate': mean_error_rate,
                         'Std Error Rate': std_error_rate,
@@ -1069,9 +1058,9 @@ if __name__ == "__main__":
     #datasets = ['hate_gap', 'go_emotions', 'rt'] # Datasets to use in the batch
     #techniques = ["baseline", "mc", "smoothing", "de"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     
-    models = ['prajjwal1/bert-small'] # Models to use in the batch
-    datasets = ['hate_gap'] # Datasets to use in the batch
-    techniques = ["baseline", "mc", "smoothing", "de"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    models = ['xlnet/xlnet-base-cased'] # Models to use in the batch
+    datasets = ['rt'] # Datasets to use in the batch
+    techniques = ["ub"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     num_runs = 3  # Number of runs per technique, the models have to be trained and exists in the saved_results folder
     enable_plotting = True  # Set to False to disable plotting # TODO impl plotting and verbose output.
 
