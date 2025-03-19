@@ -125,6 +125,10 @@ def preprocess_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     columns_to_drop = [col for col in df.columns if col in emotion_labels or col == 'is_error']
     df = df.drop(columns=columns_to_drop, errors='ignore').copy()
     logger.debug(f"Dropped columns: {columns_to_drop}")
+    
+    columns_order = ['text', 'id', 'label', 'gold_label']
+    df = df[[col for col in columns_order if col in df.columns]]
+    logger.info(f"Columns after reordering: {df.columns.tolist()}")
 
     df.reset_index(drop=True, inplace=True)
 
