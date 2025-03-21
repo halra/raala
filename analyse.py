@@ -615,7 +615,8 @@ class WorkloadEvaluator:
                             default_threshold_percentile=60,
                             threshold_percentile_agreement=60,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
-                            quiet=True  
+                            quiet=True
+                            #random_threshold=0.5
                         )
                         df = workload.df
                         filtered_df = df[(df['ambiguous'] == True) & (df['ambiguous_based_on_agreement'] == True)]
@@ -1058,8 +1059,8 @@ if __name__ == "__main__":
     #datasets = ['hate_gap', 'go_emotions', 'rt'] # Datasets to use in the batch
     #techniques = ["baseline", "mc", "smoothing", "de"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     
-    models = ['xlnet/xlnet-base-cased'] # Models to use in the batch
-    datasets = ['rt'] # Datasets to use in the batch
+    models = ['google-bert/bert-base-uncased'] # Models to use in the batch
+    datasets = ['go_emotions'] # Datasets to use in the batch
     techniques = ["ub"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     num_runs = 3  # Number of runs per technique, the models have to be trained and exists in the saved_results folder
     enable_plotting = True  # Set to False to disable plotting # TODO impl plotting and verbose output.

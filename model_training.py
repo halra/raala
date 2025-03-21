@@ -60,7 +60,7 @@ def train_and_evaluate_models( # TODO add dropout, smooting  and debug flags
                     )
                 elif technique == 'ub':
                     workload.train(training_type='ub')
-                    workload.evaluate(debug=False) 
+                    workload.evaluate(debug=False, evaluation_type='ub') 
                 elif technique == 'smoothing':
                     workload.train(smoothing=0.3)
                     workload.evaluate(debug=False)

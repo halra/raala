@@ -60,6 +60,25 @@ class ModelEvaluator:
         
         return list_label_and_scores, all_classes_scores
 
+
+    def _eval_upper_bound(
+        self, workload: Any, row: pd.Series
+    ) -> Tuple[List[Dict[str, float]], List[float]]:
+
+        list_label_and_scores = []
+        all_classes_scores = []
+        
+        for model in workload.models:
+            print("DEBUG: Upper Bound", "with model", model)
+            labels, scores = model.classifier.predict(row) # model.classifier is actually upper_bound_trainer
+            print(labels)
+            print(scores)
+            label_and_scores = {label: score for label, score in zip(labels, scores)}
+            list_label_and_scores.append(label_and_scores)
+            all_classes_scores.extend(scores)
+        
+        return list_label_and_scores, all_classes_scores
+
     def _calculate_majority_vote(
         self, list_label_and_scores: List[Dict[str, float]]
     ) -> Tuple[str, List[float]]:
@@ -144,6 +163,10 @@ class ModelEvaluator:
                     workload, row, num_samples
                 )
                 workload.models[0].classifier.eval()
+            elif eval_type == "ub":
+                list_label_and_scores, all_classes_scores = self._eval_upper_bound(
+                    workload, row
+                )
             else:
                 raise ValueError(f"Unknown evaluation type: {eval_type}")
             

@@ -5,14 +5,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
-from transformers import BertForSequenceClassification, XLNetForSequenceClassification, RobertaForSequenceClassification # TODO can this be made generic?
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
 import random
 import numpy as np
 from transformers import (
-    AutoTokenizer
+    AutoTokenizer,
+    AutoModelForSequenceClassification
 )
-from transformers import AutoConfig, AutoModel, AutoModelForTokenClassification
 
 # Constants
 #MODEL_PATH = "./models/test"
@@ -56,15 +55,21 @@ class CustomDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.dataframe.iloc[idx]
+        return self._process_data_point(row)
+    
+    def _process_data_point(self, row):
         text = row["text"]
         label_str = row["gold_label"].strip().lower()
         # Use global LABEL_2_ID mapping (processed later)
         gold_class = LABEL_2_ID.get(label_str, 0)
         highest_agreement = row["highest_agreement"]
 
-        # gold_label gets highest_agreement and others share the remainder.
-        soft_label = [(1 - highest_agreement) / (self.num_classes - 1)] * self.num_classes
-        soft_label[gold_class] = highest_agreement
+        # each label gets the corresponding empirical probability, <unk> is 0
+        soft_label = [0] * self.num_classes
+        for label_type in LABEL_2_ID:    
+            if label_type != '<unk>':
+                soft_label[LABEL_2_ID[label_type]] = row[label_type + "_probability"]
+        
         soft_label = torch.tensor(soft_label, dtype=torch.float)
 
         encoding = self.tokenizer.encode_plus(
@@ -95,6 +100,11 @@ class Upper_bounds_trainer():
         self.model_name = model_name
         self.instance_name = instance_name
         self.model_path = os.path.join(os.getcwd(), "models", self.instance_name)
+        label_dictionary = None
+        num_classes = 0
+        device = 'cpu'
+        model = None
+        tokenizer = None
 
 
     #logging
@@ -146,51 +156,41 @@ class Upper_bounds_trainer():
         df_dev = pd.read_csv("./workload/dev.csv")
         global LABEL_2_ID
         LABEL_2_ID = self._label_2_id_processor(df)
-        num_classes = len(LABEL_2_ID)
-        logger.info(f"Number of classes: {num_classes}")
+        self.label_dictionary = LABEL_2_ID
+        self.num_classes = len(LABEL_2_ID)
+        logger.info(f"Number of classes: {self.num_classes}")
         
         #tokenizer = BertTokenizer.from_pretrained(self.model_name)
-        tokenizer = AutoTokenizer.from_pretrained(
+        self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
         )
-        dataset = CustomDataset(dataframe=df, tokenizer=tokenizer, max_length=128, num_classes=num_classes)
+        dataset = CustomDataset(dataframe=df, tokenizer=self.tokenizer, max_length=128, num_classes=self.num_classes)
         dataloader = DataLoader(dataset, batch_size=mini_batch_size, shuffle=True)
-        dataset_dev = CustomDataset(dataframe=df_dev, tokenizer=tokenizer, max_length=128, num_classes=num_classes)
+        dataset_dev = CustomDataset(dataframe=df_dev, tokenizer=self.tokenizer, max_length=128, num_classes=self.num_classes)
         dataloader_dev = DataLoader(dataset_dev, batch_size=mini_batch_size, shuffle=True)
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f"Using device: {device}")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Using device: {self.device}")
 
-        #TODO this isn not very nice and generic, either make it generic or pass the transformer from the outside
-        if "bert" in self.model_name:
-            logger.info("Using BERT model...")
-            model = BertForSequenceClassification.from_pretrained(self.model_name, num_labels=num_classes)
-        if "xlnet" in self.model_name:
-            logger.info("Using XLNet model...")
-            model = XLNetForSequenceClassification.from_pretrained(self.model_name, num_labels=num_classes)
-        if "roberta" in self.model_name:
-            logger.info("Using RoBERTa model...")
-            model = RobertaForSequenceClassification.from_pretrained(self.model_name, num_labels=num_classes)
-        #https://huggingface.co/transformers/v3.0.2/model_doc/auto.html
-        #logger.info(f"Using {self.model_name} model...")   
-        #model = AutoModelForTokenClassification.from_pretrained(self.model_name, num_labels=num_classes)
+        self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name, num_labels=self.num_classes)
+        
         # TODO if model is None raise panic
-        model.to(device)
+        self.model.to(self.device)
 
-        loss_fn = LabelSmoothingCrossEntropyLoss(num_classes=num_classes)
-        loss_fn.to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate) # TODO this should be a parameter and not hardcoed AdamW
+        loss_fn = LabelSmoothingCrossEntropyLoss(num_classes=self.num_classes)
+        loss_fn.to(self.device)
+        optimizer = torch.optim.AdamW(self.model.parameters(), lr=learning_rate) # TODO this should be a parameter and not hardcoed AdamW
 
         logger.info("Starting training with soft labels...")
         for epoch in range(max_epochs):
             epoch_losses = []
-            model.train()
+            self.model.train()
             for batch in dataloader:
-                input_ids = batch["input_ids"].to(device)
-                attention_mask = batch["attention_mask"].to(device)
-                soft_labels = batch["soft_label"].to(device)
+                input_ids = batch["input_ids"].to(self.device)
+                attention_mask = batch["attention_mask"].to(self.device)
+                soft_labels = batch["soft_label"].to(self.device)
 
-                outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+                outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
                 logits = outputs.logits
                 loss = loss_fn(logits, soft_labels)
                 loss.backward()
@@ -202,16 +202,16 @@ class Upper_bounds_trainer():
             logger.info(f"Epoch {epoch+1}/{max_epochs} - Average Training Loss: {avg_loss:.4f}")
 
             # Evaluation
-            model.eval()
+            self.model.eval()
             all_preds = []
             all_true = []
             with torch.no_grad():
                 for batch in dataloader_dev:
-                    input_ids = batch["input_ids"].to(device)
-                    attention_mask = batch["attention_mask"].to(device)
-                    soft_labels = batch["soft_label"].to(device)
+                    input_ids = batch["input_ids"].to(self.device)
+                    attention_mask = batch["attention_mask"].to(self.device)
+                    soft_labels = batch["soft_label"].to(self.device)
 
-                    outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+                    outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
                     logits = outputs.logits
                     preds = torch.argmax(logits, dim=1)
                     true_labels = torch.argmax(soft_labels, dim=1)
@@ -244,12 +244,36 @@ class Upper_bounds_trainer():
             label_dict.add_item(label)
         document_embeddings = TransformerDocumentEmbeddings(self.model_name) 
         flair_classifier = TextClassifier(document_embeddings, label_dictionary=label_dict, label_type="label_gold")
-        missing_keys = flair_classifier.load_state_dict(model.state_dict(), strict=False)
+        missing_keys = flair_classifier.load_state_dict(self.model.state_dict(), strict=False)
         #logger.info(f"Missing keys when loading state dict into Flair classifier: {missing_keys}")
         flair_save_path = os.path.join(self.model_path, "final-model.pt")
         os.makedirs(self.model_path, exist_ok=True)
         flair_classifier.save(flair_save_path)
         logger.info(f"Flair model saved at: {flair_save_path}")
         logger.info(f"Training completed. Model saved to '{flair_save_path}'.")
-        return model, flair_classifier, tokenizer, device, LABEL_2_ID
+        return self.model, flair_classifier, self.tokenizer, self.device, LABEL_2_ID
 
+    def predict(
+            self, row
+        ):
+        datapoint_dataset = CustomDataset(dataframe=pd.DataFrame([row]), tokenizer=self.tokenizer, max_length=128, num_classes=self.num_classes)    
+        datapoint_dataloader = DataLoader(datapoint_dataset, batch_size=1, shuffle=True)
+        # define iterator for use in training
+        iterator = iter(datapoint_dataloader)
+
+        # extract batch
+        data_point = next(iterator)
+
+        input_ids = data_point["input_ids"].to(self.device)
+        attention_mask = data_point["attention_mask"].to(self.device)
+        soft_labels = data_point["soft_label"].to(self.device)
+        self.model.eval()
+
+        with torch.no_grad():
+            outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+            softmax = torch.softmax(outputs.logits, dim=1)
+            softmax = softmax.cpu().numpy()[0]
+
+        LABEL_2_ID_REVERSED = {v: k for k, v in LABEL_2_ID.items()}
+
+        return [LABEL_2_ID_REVERSED[idx] for idx in range(len(softmax))], softmax.tolist()

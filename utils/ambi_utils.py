@@ -23,7 +23,8 @@ class AmbiUtils:
         columns: list = ["variance_tag", "entropy_all", "jsd"],
         threshold_percentiles: dict = None,
         default_threshold_percentile: float = 90.0,
-        debug: bool = False
+        debug: bool = False,
+        random_threshold: float = None
     ) -> pd.DataFrame:
         thresholds = {}
         for column in columns:
@@ -35,6 +36,12 @@ class AmbiUtils:
             condition |= workload[column] > thresholds[column]
 
         workload['ambiguous'] = condition
+        
+        if random_threshold is not None:
+            workload['ambiguous'] = np.random.rand(len(workload)) < random_threshold
+            logger.info(f"Ambiguity column set using random chance ({random_threshold*100:.2f}%).")
+        else:
+            logger.info("Ambiguity column set based on threshold conditions.")
 
         if debug:
             ambiguous_percentage = workload['ambiguous'].mean() * 100
@@ -75,14 +82,16 @@ class AmbiUtils:
         agreement_column: str = "highest_agreement",
         threshold_percentile_agreement: float = 60.0,
         debug: bool = False,
-        quiet: bool = False
+        quiet: bool = False,
+        random_threshold: float = None
     ) -> None:
         self.threshold_based_ambiguity_detection(
             workload=workload,
             columns=columns,
             threshold_percentiles=threshold_percentiles,
             default_threshold_percentile=default_threshold_percentile,
-            debug=debug
+            debug=debug,
+            random_threshold= random_threshold
         )
         self.agreement_based_ambiguity_detection(
             df=workload,
