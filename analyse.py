@@ -432,6 +432,7 @@ class WorkloadEvaluator:
             plt.close()   
 
 
+#TODO here we have to calc the std differently
     def calculate_JSD_MSE_CORR(self):
         for ds in datasets:
             num_techs = len(techniques)
@@ -439,12 +440,16 @@ class WorkloadEvaluator:
             num_rows = math.ceil(num_techs / num_cols)
             fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 10))
             axes = axes.flatten()
-
+            
+            # annotator[0.2,0.2,0.3,0.1,0.2] model[0.1,0.1,0.4,0.2,0.2]
+            # JSD = 0.1 * log(0.1/0.2) + 0.2 * log(0.2/0.2) + 0.3 * log(0.3/0.4) + 0.1 * log(0.1/0.2) + 0.2 * log(0.2/0.2)
+            # corr = np.corrcoef([0.2,0.2,0.3,0.1,0.2], [0.1,0.1,0.4,0.2,0.2])
+            # now we sum up the jsd of each row and take the mean, this is the high std i guess
             for idx_outer, tech in enumerate(techniques):
-                tabels = []
+                
                 for model in models:
                     model_data = []
-
+                    tabels = []
                     for idx in range(3): 
                         current_evaluation = f"{model}_{ds}_{tech}_{idx + 1}"
                         workload = Workload.load(workload_name=current_evaluation, load_models=False, quiet=True)
@@ -556,7 +561,7 @@ class WorkloadEvaluator:
 
                     #metrics = ['JSD', 'Correlation', 'KL_Divergence', 'Cosine_Similarity', 'MAE', 'MSE']
                     metrics = ['JSD', 'Correlation','MSE']
-                    summary_stats = df[metrics].describe()
+                    summary_stats = df[metrics].describe() # TODO here we have the big std difference
                     #print(summary_stats)
                     #print("summary_stats for", current_evaluation)
                     #print(summary_stats)
@@ -581,9 +586,10 @@ class WorkloadEvaluator:
                     logger.info(f"Markdown table saved to {md_path}")
 
 
-    def proof_of_concept_ambiguity_sample_detection(self):
+    def proof_of_concept_ambiguity_sample_detection(self, random_threshold=None):
         summary_data = [] # TODO this shold be recreated on each model run, now it accumulates the tables ... 
         roc_data = {}
+        print("Running proof of concept ambiguity detection... with random_threshold", random_threshold)
         for model in models:
             for ds in datasets:
                 for tech in techniques:
@@ -615,8 +621,8 @@ class WorkloadEvaluator:
                             default_threshold_percentile=60,
                             threshold_percentile_agreement=60,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
-                            quiet=True
-                            #random_threshold=0.5
+                            quiet=True,
+                            random_threshold=random_threshold
                         )
                         df = workload.df
                         filtered_df = df[(df['ambiguous'] == True) & (df['ambiguous_based_on_agreement'] == True)]
@@ -731,11 +737,10 @@ class WorkloadEvaluator:
                     plt.legend(loc='lower right')
                     #plt.show()
                     model_path_fix = current_evaluation.replace("/", "-")
-                    plt.savefig(os.path.join(self.plot_dir, f'proof_of_concept_ambiguity_sample_detection_current_{model_path_fix}.png'))
-                    plt.close()
+                    if random_threshold is not None:
+                        model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
 
                 summary_df = pd.DataFrame(summary_data)
-
                 #print("=== Summary Table ===\n")
                 #print(summary_df.to_string(index=False))
                 latex_table = summary_df.to_latex(
@@ -747,6 +752,8 @@ class WorkloadEvaluator:
                     label="tab:evaluation_metrics"
                 )
                 model_path_fix = current_evaluation.replace("/", "-")
+                if random_threshold is not None:
+                    model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
                 latex_path = os.path.join(self.latex_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.tex')
                 with open(latex_path, 'w') as f:
                     f.write(latex_table)
@@ -775,6 +782,8 @@ class WorkloadEvaluator:
                 plt.tight_layout()
                 #plt.show()
                 model_path_fix = current_evaluation.replace("/", "-")
+                if random_threshold is not None:
+                    model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
                 plt.savefig(os.path.join(self.plot_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.png'))
                 plt.close()
                 print(f"\nCombined ROC curves saved to '{self.plot_dir}'.")
@@ -1072,6 +1081,7 @@ if __name__ == "__main__":
     evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
     evaluator.calculate_JSD_MSE_CORR()
     evaluator.proof_of_concept_ambiguity_sample_detection()
+    evaluator.proof_of_concept_ambiguity_sample_detection(random_threshold=0.5)
     evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel()
     evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC() # this could be merged with the other ROC plotting ... 
 

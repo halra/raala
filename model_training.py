@@ -38,7 +38,7 @@ def train_and_evaluate_models( # TODO add dropout, smooting  and debug flags
         for idx, technique in  enumerate(techniques):
                 seeds = seeds_list[idx]
                 current_epochs = epochs_list[idx]
-                suffix = (idx % 3)+ 1
+                suffix = (idx % 3)+ 1 # TODO the modul has to be dynamic
                 current_job_name = f"{model_name}_{dataset_name}_{technique}_{suffix}" # TODO make this idx better, make it more dynamic
 
                 logger.info(f"Starting training for: {current_job_name}")
@@ -78,7 +78,7 @@ def main():
     #    'bert-base'
     #]
     model_names = [
-        'google-bert/bert-base-uncased',
+        #'google-bert/bert-base-uncased', # done
         'FacebookAI/roberta-base',
         'xlnet/xlnet-base-cased'
     ]

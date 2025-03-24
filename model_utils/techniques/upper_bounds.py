@@ -34,7 +34,21 @@ class LabelSmoothingCrossEntropyLoss(nn.Module):
         self.reduction = reduction
 
     def forward(self, logits, soft_labels):
-            #print("soft_labels", soft_labels[0]) # just look at the first element form the batch
+        #print("soft_labels", soft_labels[0]) # just look at the first element form the batch
+        #Examples::
+
+        #>>> # Example of target with class indices
+        #>>> loss = nn.CrossEntropyLoss()
+        #>>> input = torch.randn(3, 5, requires_grad=True)
+        #>>> target = torch.empty(3, dtype=torch.long).random_(5)
+        #>>> output = loss(input, target)
+        #>>> output.backward()
+        #>>>
+        #>>> # Example of target with class probabilities
+        #>>> input = torch.randn(3, 5, requires_grad=True)
+        #>>> target = torch.randn(3, 5).softmax(dim=1)
+        #>>> output = loss(input, target)
+        #>>> output.backward()
         loss = nn.CrossEntropyLoss()
         output = loss(logits, soft_labels)
         return output
@@ -154,6 +168,7 @@ class Upper_bounds_trainer():
         logger.info("Loading data...")
         df = pd.read_csv("./workload/train.csv") # TODO lead train and validate on dev and test .... 
         df_dev = pd.read_csv("./workload/dev.csv")
+        #https://stackoverflow.com/questions/4693120/why-isnt-the-global-keyword-needed-to-access-a-global-variable
         global LABEL_2_ID
         LABEL_2_ID = self._label_2_id_processor(df)
         self.label_dictionary = LABEL_2_ID

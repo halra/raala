@@ -39,10 +39,9 @@ class AmbiUtils:
         
         if random_threshold is not None:
             workload['ambiguous'] = np.random.rand(len(workload)) < random_threshold
-            logger.info(f"Ambiguity column set using random chance ({random_threshold*100:.2f}%).")
-        else:
-            logger.info("Ambiguity column set based on threshold conditions.")
-
+            #logger.info(f"Ambiguity column set using random chance ({random_threshold*100:.2f}%).")
+        #else:
+        #    logger.info("Ambiguity column set based on threshold conditions.")
         if debug:
             ambiguous_percentage = workload['ambiguous'].mean() * 100
             logger.debug(f"Ambiguous Samples: {ambiguous_percentage:.2f}% of the dataset")
