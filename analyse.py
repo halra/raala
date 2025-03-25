@@ -333,9 +333,9 @@ class WorkloadEvaluator:
                     #workload.plot_columns('entropy_mean_prediction', ['entropy_agreement']) 
                     # Generate a custom plot and not use the workload.plot_columns ... 
                     num_plots = len(['entropy_agreement'])
-                    num_rows = 2
+                    num_rows = 1
                     num_cols = math.ceil(num_plots / num_rows)
-                    plt.figure(figsize=(15, 10))
+                    plt.figure(figsize=(8,3.3))
                     ent = 'entropy_mean_prediction'
                     for i, measure in enumerate(['entropy_agreement'], 1):
                         plt.subplot(num_rows, num_cols, i)
@@ -349,9 +349,9 @@ class WorkloadEvaluator:
                             line_kws={'linewidth': 1.5}
                         )
                         correlation = workload.df[measure].corr(workload.df['entropy_mean_prediction'])
-                        plt.title(f'{ent} vs {measure}\nCorrelation = {correlation:.6f}')
-                        plt.xlabel(measure)
-                        plt.ylabel('entropy_mean_prediction')
+                        #plt.title(f'Correlation = {correlation:.6f}')
+                        plt.xlabel(self.mapping_helper[measure])
+                        plt.ylabel(self.mapping_helper['entropy_mean_prediction'])
                         plt.grid(True, linestyle='--', alpha=0.6)
                     plt.tight_layout()
                     #plt.show()
