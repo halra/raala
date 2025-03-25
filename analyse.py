@@ -80,7 +80,8 @@ class WorkloadEvaluator:
             'smoothing': 'Label Smoothing',
             'de': 'Deep Ensemble',
             'prajjwal1/bert-small' :'prajjwal1-bert-small',
-            'ub': 'Upper Bound'
+            'ub': 'Upper Bound',
+            'entropy_agreement': 'Empirical Entropy'
         }
 
     ## Helper Functions
