@@ -593,10 +593,10 @@ class WorkloadEvaluator:
                     logger.info(f"Markdown table saved to {md_path}")
 
 
-    def proof_of_concept_ambiguity_sample_detection(self, random_threshold=None):
+    def proof_of_concept_ambiguity_sample_detection(self):
         summary_data = [] # TODO this shold be recreated on each model run, now it accumulates the tables ... 
         roc_data = {}
-        print("Running proof of concept ambiguity detection... with random_threshold", random_threshold)
+        print("Running proof of concept ambiguity detection")
         for model in models:
             for ds in datasets:
                 for tech in techniques:
@@ -610,44 +610,39 @@ class WorkloadEvaluator:
                     fprs = []
                     tprs = []
                     predictors = None
-                    
+
                     for i in range(1, 4):  # 1, 2, 3
                         current_evaluation = f"{model}_{ds}_{tech}_{i}"
+                        random_threshold = False
+
+                        if tech == 'random':
+                            placeholder_name = f"{model}_{ds}_baseline_{i}"
+                            random_threshold = True
+                        else:
+                            placeholder_name = current_evaluation
+
                         workload = Workload.load(
-                            workload_name=current_evaluation,
+                            workload_name=placeholder_name,
                             load_models=False,
                             quiet=True 
                         )
-                        
+
+                        if random_threshold:
+                            workload.model_name = 'random'
+                            workload.name = current_evaluation
+
                         self.label_columns = self.load_labels(workload)
                         #invert entropy to work with the detection algorithm
                         workload.df['entropy_agreement'] = workload.df.apply(lambda row: self.compute_entropy_invert(row, self.label_columns), axis=1) 
                         
-                        workload.test_detection(
-                            agreement_column="entropy_agreement", 
-                            default_threshold_percentile=60,
-                            threshold_percentile_agreement=60,
-                            columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
-                            quiet=True,
-                            random_threshold=random_threshold
-                        )
                         df = workload.df
-                        filtered_df = df[(df['ambiguous'] == True) & (df['ambiguous_based_on_agreement'] == True)]
-                        filtered_df_neg = df[(df['ambiguous'] == False) & (df['ambiguous_based_on_agreement'] == False)]
-                        
-
-                        percentage = ((len(filtered_df) + len(filtered_df_neg)) / len(df)) * 100
-                        percentages.append(percentage)
-                        
-                        print(f"For Evaluation: {current_evaluation}")
-                        print(f"Percentage of rows where ambiguous_based_on_agreement is True == True and False == False: {percentage:.2f}%\n")
-                        
                         best_threshold_combination, lowest_error_rate, results_df = workload.find_best_threshold_combination_based_on_error_rate(
                             agreement_column='entropy_agreement',
                             min_threshold=60,
-                            max_threshold=95,
+                            max_threshold=60,
                             min_agreement_threshold=60,
-                            max_agreement_threshold=95,
+                            max_agreement_threshold=60,
+                            random_threshold=random_threshold,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd']
                         )
                         
@@ -675,44 +670,44 @@ class WorkloadEvaluator:
                         recalls.append(recall)
                         f1_scores.append(f1)        
 
-                    median_error_rate = np.median(error_rates)
+                    mean_error_rate = np.mean(error_rates)
                     std_error_rate = np.std(error_rates, ddof=1) 
-                    median_percentage = np.median(percentages)
+                    mean_percentage = np.mean(percentages)
                     std_percentage = np.std(percentages, ddof=1) 
-                    median_accuracy = np.median(accuracies)
+                    mean_accuracy = np.mean(accuracies)
                     std_accuracy = np.std(accuracies, ddof=1)
-                    median_precision = np.median(precisions)
+                    mean_precision = np.mean(precisions)
                     std_precision = np.std(precisions, ddof=1)
-                    median_recall = np.median(recalls)
+                    mean_recall = np.mean(recalls)
                     std_recall = np.std(recalls, ddof=1)
-                    median_f1 = np.median(f1_scores)
+                    mean_f1 = np.mean(f1_scores)
                     std_f1 = np.std(f1_scores, ddof=1)
-                    median_auc = np.median(aucs)
+                    mean_auc = np.mean(aucs)
                     std_auc = np.std(aucs, ddof=1)
                     
                     mean_predictors = predictors / 3
 
                     summary_data.append({
                         'Technique': tech,
-                        'Median Lowest Error Rate': median_error_rate,
+                        'Mean Lowest Error Rate': mean_error_rate,
                         'STD Lowest Error Rate': std_error_rate,
-                        'Median Percentage': median_percentage,
+                        'Mean Percentage': mean_percentage,
                         'STD Percentage': std_percentage,
-                        'Median Accuracy': median_accuracy,
+                        'Mean Accuracy': mean_accuracy,
                         'STD Accuracy': std_accuracy,
-                        'Median Precision': median_precision,
+                        'Mean Precision': mean_precision,
                         'STD Precision': std_precision,
-                        'Median Recall': median_recall,
+                        'Mean Recall': mean_recall,
                         'STD Recall': std_recall,
-                        'Median F1 Score': median_f1,
+                        'Mean F1 Score': mean_f1,
                         'STD F1 Score': std_f1,
-                        'Median AUC': median_auc,
+                        'Mean AUC': mean_auc,
                         'STD AUC': std_auc
                     })
                     
 
                     error_rates_array = np.array(error_rates)
-                    median_error_rate_idx = np.argmin(np.abs(error_rates_array - median_error_rate))
+                    mean_error_rate_idx = np.argmin(np.abs(error_rates_array - mean_error_rate))
                     
 
                     print("fprs", fprs)
@@ -744,8 +739,6 @@ class WorkloadEvaluator:
                     plt.legend(loc='lower right')
                     #plt.show()
                     model_path_fix = current_evaluation.replace("/", "-")
-                    if random_threshold is not None:
-                        model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
 
                 summary_df = pd.DataFrame(summary_data)
                 #print("=== Summary Table ===\n")
@@ -759,8 +752,7 @@ class WorkloadEvaluator:
                     label="tab:evaluation_metrics"
                 )
                 model_path_fix = current_evaluation.replace("/", "-")
-                if random_threshold is not None:
-                    model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
+
                 latex_path = os.path.join(self.latex_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.tex')
                 with open(latex_path, 'w') as f:
                     f.write(latex_table)
@@ -783,14 +775,12 @@ class WorkloadEvaluator:
 
                 plt.xlabel('False Positive Rate', fontsize=14)
                 plt.ylabel('True Positive Rate', fontsize=14)
-                plt.title('ROC Curves for Median Runs of Each Technique', fontsize=16)
+                plt.title('ROC Curves for Mean Runs of Each Technique', fontsize=16)
                 plt.legend(fontsize=12)
                 plt.grid(True, ls="--", linewidth=0.5)
                 plt.tight_layout()
                 #plt.show()
                 model_path_fix = current_evaluation.replace("/", "-")
-                if random_threshold is not None:
-                    model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
                 plt.savefig(os.path.join(self.plot_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.png'))
                 plt.close()
                 print(f"\nCombined ROC curves saved to '{self.plot_dir}'.")
@@ -1073,11 +1063,9 @@ if __name__ == "__main__":
     
     #models = ['bert', 'roberta', 'xlnet'] # Models to use in the batch
     #datasets = ['hate_gap', 'go_emotions', 'rt'] # Datasets to use in the batch
-    #techniques = ["baseline", "mc", "smoothing", "de"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    #techniques = ["baseline", "mc", "smoothing", "de", "random"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     
-    models = ['google-bert/bert-base-uncased'] # Models to use in the batch
-    datasets = ['go_emotions'] # Datasets to use in the batch
-    techniques = ["ub"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    techniques = ['random','de','baseline'] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     num_runs = 3  # Number of runs per technique, the models have to be trained and exists in the saved_results folder
     enable_plotting = True  # Set to False to disable plotting # TODO impl plotting and verbose output.
 

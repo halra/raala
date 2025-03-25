@@ -352,6 +352,7 @@ class Workload:
         max_agreement_threshold: int = 70,
         agreement_column: str = 'highest_agreement',
         debug: bool = False,
+        random_threshold: bool = None
     ):
         if columns is None:
             columns = ["variance_tag", "entropy_all", "jsd"]
@@ -366,6 +367,7 @@ class Workload:
             max_agreement_threshold=max_agreement_threshold,
             agreement_column=agreement_column,
             debug=debug,
+            random_threshold=random_threshold,
         )
 
     def show_confusion_matrix(
