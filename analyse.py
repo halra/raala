@@ -81,8 +81,8 @@ class WorkloadEvaluator:
             'de': 'Deep Ensemble',
             'prajjwal1/bert-small' :'prajjwal1-bert-small',
             'ub': 'Upper Bound',
-            'entropy_agreement': 'Empirical Entropy',
-            'entropy_mean_prediction': 'Entropy of Mean Prediction',
+            'entropy_agreement': 'Label Ambiguity Score',
+            'entropy_mean_prediction': 'Model Uncertainty Score'
         }
 
     ## Helper Functions
