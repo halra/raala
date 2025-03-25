@@ -457,112 +457,117 @@ class WorkloadEvaluator:
                         workload.df['entropy_agreement'] = workload.df.apply(lambda row: self.compute_entropy(row, self.label_columns), axis=1) 
                         tabels.append(workload.df)
 
-                    annotator_cols = [col for col in workload.df.columns if col.endswith('_probability')]
-                    model_cols = [col for col in workload.df.columns if col.endswith('_probability_model')]
-                    tabels[0][annotator_cols] = (tabels[0][annotator_cols] + tabels[1][annotator_cols] + tabels[2][annotator_cols]) / 3
-                    tabels[0][model_cols] = (tabels[0][model_cols] + tabels[1][model_cols] + tabels[2][model_cols]) / 3
+                        annotator_cols = [col for col in workload.df.columns if col.endswith('_probability')]
+                        model_cols = [col for col in workload.df.columns if col.endswith('_probability_model')]
+                        
+                        # calculate JSD, MSE, CORR and the other metrics for each run separately
+                        df = workload.df
 
-                    df = tabels[0]
+                        probability_cols = annotator_cols + model_cols
 
-                    annotator_cols = [col for col in df.columns if col.endswith('_probability')]
-                    model_cols = [col for col in df.columns if col.endswith('_probability_model')]
+                        for col in probability_cols:
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
 
-                    probability_cols = annotator_cols + model_cols
+                        df[probability_cols] = df[probability_cols].astype(np.float64)
 
-                    for col in probability_cols:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-
-                    df[probability_cols] = df[probability_cols].astype(np.float64)
-
-                    # Check for NaNs
-                    nan_counts = df[probability_cols].isna().sum()
-                    #print("NaN counts in probability columns:\n", nan_counts)
-                    epsilon = 1e-10
-                    df[probability_cols] = df[probability_cols].fillna(epsilon)
-
-
-                    #probabilities must sum to 1
-                    df['annotator_total'] = df[annotator_cols].sum(axis=1)
-                    df['model_total'] = df[model_cols].sum(axis=1)
-
-                    df[annotator_cols] = df[annotator_cols].div(df['annotator_total'], axis=0)
-                    df[model_cols] = df[model_cols].div(df['model_total'], axis=0)
-
-                    from scipy.spatial.distance import jensenshannon
-
-                    def compute_jsd(row):
-                        p = row[annotator_cols].values.astype(np.float64)
-                        q = row[model_cols].values.astype(np.float64)
-                        p /= p.sum()
-                        q /= q.sum()
-                        js_distance = jensenshannon(p, q, base=2)
-                        js_divergence = js_distance ** 2 
-                        return js_divergence
-
-                    df['JSD'] = df.apply(compute_jsd, axis=1)
-
-
-                    def compute_correlation(row):
-                        p = row[annotator_cols].values.astype(np.float64)
-                        q = row[model_cols].values.astype(np.float64)
-                        if np.std(p) == 0 or np.std(q) == 0:
-                            return np.nan 
-                        else:
-                            corr = np.corrcoef(p, q)[0, 1]
-                            #print("p:", p, "q:", q, "corr:", corr)
-                            return corr
-
-
-                    df['Correlation'] = df.apply(compute_correlation, axis=1)
-
-                    def compute_kl_divergence(row):
-                        p = row[annotator_cols].values.astype(np.float64)
-                        q = row[model_cols].values.astype(np.float64)
-                        #No division by zero or log(0)
+                        # Check for NaNs
+                        nan_counts = df[probability_cols].isna().sum()
+                        #print("NaN counts in probability columns:\n", nan_counts)
                         epsilon = 1e-10
-                        p = p + epsilon
-                        q = q + epsilon
-                        p /= p.sum()
-                        q /= q.sum()
-                        return entropy(p, qk=q)
+                        df[probability_cols] = df[probability_cols].fillna(epsilon)
 
 
-                    df['KL_Divergence'] = df.apply(compute_kl_divergence, axis=1)
+                        #probabilities must sum to 1
+                        df['annotator_total'] = df[annotator_cols].sum(axis=1)
+                        df['model_total'] = df[model_cols].sum(axis=1)
 
-                    from sklearn.metrics.pairwise import cosine_similarity
+                        df[annotator_cols] = df[annotator_cols].div(df['annotator_total'], axis=0)
+                        df[model_cols] = df[model_cols].div(df['model_total'], axis=0)
 
-                    def compute_cosine_similarity(row):
-                        p = row[annotator_cols].values.reshape(1, -1)
-                        q = row[model_cols].values.reshape(1, -1)
-                        return cosine_similarity(p, q)[0][0]
+                        from scipy.spatial.distance import jensenshannon
 
-                    df['Cosine_Similarity'] = df.apply(compute_cosine_similarity, axis=1)
+                        def compute_jsd(row):
+                            p = row[annotator_cols].values.astype(np.float64)
+                            q = row[model_cols].values.astype(np.float64)
+                            p /= p.sum()
+                            q /= q.sum()
+                            js_distance = jensenshannon(p, q, base=2)
+                            js_divergence = js_distance ** 2 
+                            return js_divergence
 
-                    def compute_hellinger_distance(row):
-                        p = np.sqrt(row[annotator_cols].values)
-                        q = np.sqrt(row[model_cols].values)
-                        return np.linalg.norm(p - q) / np.sqrt(2)
+                        df['JSD'] = df.apply(compute_jsd, axis=1)
+
+
+                        def compute_correlation(row):
+                            p = row[annotator_cols].values.astype(np.float64)
+                            q = row[model_cols].values.astype(np.float64)
+                            if np.std(p) == 0 or np.std(q) == 0:
+                                return np.nan 
+                            else:
+                                corr = np.corrcoef(p, q)[0, 1]
+                                #print("p:", p, "q:", q, "corr:", corr)
+                                return corr
+
+
+                        df['Correlation'] = df.apply(compute_correlation, axis=1)
+
+                        def compute_kl_divergence(row):
+                            p = row[annotator_cols].values.astype(np.float64)
+                            q = row[model_cols].values.astype(np.float64)
+                            #No division by zero or log(0)
+                            epsilon = 1e-10
+                            p = p + epsilon
+                            q = q + epsilon
+                            p /= p.sum()
+                            q /= q.sum()
+                            return entropy(p, qk=q)
+
+
+                        df['KL_Divergence'] = df.apply(compute_kl_divergence, axis=1)
+
+                        from sklearn.metrics.pairwise import cosine_similarity
+
+                        def compute_cosine_similarity(row):
+                            p = row[annotator_cols].values.reshape(1, -1)
+                            q = row[model_cols].values.reshape(1, -1)
+                            return cosine_similarity(p, q)[0][0]
+
+                        df['Cosine_Similarity'] = df.apply(compute_cosine_similarity, axis=1)
+
+                        def compute_hellinger_distance(row):
+                            p = np.sqrt(row[annotator_cols].values)
+                            q = np.sqrt(row[model_cols].values)
+                            return np.linalg.norm(p - q) / np.sqrt(2)
 
 
 
-                    def compute_mae(row):
-                        p = row[annotator_cols].values
-                        q = row[model_cols].values
-                        return np.mean(np.abs(p - q))
+                        def compute_mae(row):
+                            p = row[annotator_cols].values
+                            q = row[model_cols].values
+                            return np.mean(np.abs(p - q))
 
-                    df['MAE'] = df.apply(compute_mae, axis=1)
+                        df['MAE'] = df.apply(compute_mae, axis=1)
 
-                    def compute_mse(row):
-                        p = row[annotator_cols].values
-                        q = row[model_cols].values
-                        return np.mean((p - q) ** 2)
+                        def compute_mse(row):
+                            p = row[annotator_cols].values
+                            q = row[model_cols].values
+                            return np.mean((p - q) ** 2)
 
-                    df['MSE'] = df.apply(compute_mse, axis=1)
+                        df['MSE'] = df.apply(compute_mse, axis=1)
 
                     #metrics = ['JSD', 'Correlation', 'KL_Divergence', 'Cosine_Similarity', 'MAE', 'MSE']
                     metrics = ['JSD', 'Correlation','MSE']
-                    summary_stats = df[metrics].describe() # TODO here we have the big std difference
-                    #print(summary_stats)
+                    
+                    # Create a new dataframe with only 3 rows (one for each seed)
+                    summary_df = pd.DataFrame(columns= metrics, index = [0,1,2], dtype=np.float64)
+
+                    for metric in metrics:
+                        summary_df.loc[0,metric] = tabels[0][metric].mean()
+                        summary_df.loc[1,metric] = tabels[1][metric].mean()
+                        summary_df.loc[2,metric] = tabels[2][metric].mean()
+
+                    # Calculate statistics (we care about mean and std) over the 3 seeds
+                    summary_stats = summary_df[metrics].describe()
                     #print("summary_stats for", current_evaluation)
                     #print(summary_stats)
                     #LaTeX table
