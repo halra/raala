@@ -79,6 +79,7 @@ class WorkloadEvaluator:
             'mc': 'MC Dropout',
             'smoothing': 'Label Smoothing',
             'de': 'Deep Ensemble',
+            'random': 'Random Baseline',
             'prajjwal1/bert-small' :'prajjwal1-bert-small',
             'ub': 'Upper Bound',
             'entropy_agreement': 'Label Ambiguity Score',
@@ -613,35 +614,41 @@ class WorkloadEvaluator:
 
                     for i in range(1, 4):  # 1, 2, 3
                         current_evaluation = f"{model}_{ds}_{tech}_{i}"
-                        random_threshold = False
 
                         if tech == 'random':
                             placeholder_name = f"{model}_{ds}_baseline_{i}"
                             random_threshold = True
-                        else:
-                            placeholder_name = current_evaluation
 
-                        workload = Workload.load(
-                            workload_name=placeholder_name,
-                            load_models=False,
-                            quiet=True 
-                        )
-
-                        if random_threshold:
+                            workload = Workload.load(
+                                workload_name=placeholder_name,
+                                load_models=False,
+                                quiet=True 
+                            )
                             workload.model_name = 'random'
                             workload.name = current_evaluation
+                        else:
+                            random_threshold = False
+                            workload = Workload.load(
+                                workload_name=current_evaluation,
+                                load_models=False,
+                                quiet=True 
+                            )
 
                         self.label_columns = self.load_labels(workload)
                         #invert entropy to work with the detection algorithm
                         workload.df['entropy_agreement'] = workload.df.apply(lambda row: self.compute_entropy_invert(row, self.label_columns), axis=1) 
                         
                         df = workload.df
+
+                        threshold_range_start = 60
+                        threshold_range_end = 95
+
                         best_threshold_combination, lowest_error_rate, results_df = workload.find_best_threshold_combination_based_on_error_rate(
                             agreement_column='entropy_agreement',
-                            min_threshold=60,
-                            max_threshold=60,
-                            min_agreement_threshold=60,
-                            max_agreement_threshold=60,
+                            min_threshold=threshold_range_start,
+                            max_threshold=threshold_range_end,
+                            min_agreement_threshold=threshold_range_start,
+                            max_agreement_threshold=threshold_range_end,
                             random_threshold=random_threshold,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd']
                         )
@@ -753,7 +760,7 @@ class WorkloadEvaluator:
                 )
                 model_path_fix = current_evaluation.replace("/", "-")
 
-                latex_path = os.path.join(self.latex_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.tex')
+                latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_ambiguity_sample_detections_{model_path_fix}.tex')
                 with open(latex_path, 'w') as f:
                     f.write(latex_table)
                 logger.info(f"LaTeX correlation table saved to {latex_path}")
@@ -802,28 +809,42 @@ class WorkloadEvaluator:
                         current_evaluation = f"{model}_{ds}_{tech}_{idx}"
                         print("Running on", current_evaluation)
                         
-                        workload = Workload.load(workload_name=current_evaluation, load_models=False, quiet=True)
+                        if tech == 'random':
+                            placeholder_name = f"{model}_{ds}_baseline_{idx}"
+                            random_threshold = True
+
+                            workload = Workload.load(
+                                workload_name=placeholder_name,
+                                load_models=False,
+                                quiet=True 
+                            )
+                            workload.model_name = 'random'
+                            workload.name = current_evaluation
+                        else:
+                            random_threshold = False
+                            workload = Workload.load(
+                                workload_name=current_evaluation,
+                                load_models=False,
+                                quiet=True 
+                            )
+
                         workload.df['Model'] = model
                         workload.df['Run'] = idx
+
                         self.label_columns= self.load_labels(workload=workload)
                         workload.df['entropy_agreement'] = workload.df.apply(lambda row: self.compute_entropy_invert(row, self.label_columns), axis=1) 
                         
-                        #detection test
-                        workload.test_detection(
-                            agreement_column="entropy_agreement",
-                            default_threshold_percentile=60,
-                            threshold_percentile_agreement=60,
-                            columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
-                            quiet=True  
-                        )
-                        
                         # Find the best threshold combination based on error rate
+                        threshold_range_start = 60
+                        threshold_range_end = 95
+
                         best_threshold_combination, lowest_error_rate, _ = workload.find_best_threshold_combination_based_on_error_rate(
                             agreement_column='entropy_agreement',
-                            min_threshold=60,
-                            max_threshold=60,
-                            min_agreement_threshold=60,
-                            max_agreement_threshold=60,
+                            min_threshold=threshold_range_start,
+                            max_threshold=threshold_range_end,
+                            min_agreement_threshold=threshold_range_start,
+                            max_agreement_threshold=threshold_range_end,
+                            random_threshold=random_threshold,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
                         )
    
