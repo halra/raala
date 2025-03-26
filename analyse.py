@@ -594,7 +594,7 @@ class WorkloadEvaluator:
                     logger.info(f"Markdown table saved to {md_path}")
 
 
-    def proof_of_concept_ambiguity_sample_detection(self):
+    def proof_of_concept_ambiguity_sample_detection(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60):
         summary_data = [] # TODO this shold be recreated on each model run, now it accumulates the tables ... 
         roc_data = {}
         print("Running proof of concept ambiguity detection")
@@ -640,15 +640,12 @@ class WorkloadEvaluator:
                         
                         df = workload.df
 
-                        threshold_range_start = 60
-                        threshold_range_end = 95
-
                         best_threshold_combination, lowest_error_rate, results_df = workload.find_best_threshold_combination_based_on_error_rate(
                             agreement_column='entropy_agreement',
                             min_threshold=threshold_range_start,
                             max_threshold=threshold_range_end,
-                            min_agreement_threshold=threshold_range_start,
-                            max_agreement_threshold=threshold_range_end,
+                            min_agreement_threshold=threshold_agreement_start,
+                            max_agreement_threshold=threshold_agreement_end,
                             random_threshold=random_threshold,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd']
                         )
@@ -759,13 +756,13 @@ class WorkloadEvaluator:
                 )
                 model_path_fix = current_evaluation.replace("/", "-")
 
-                latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_ambiguity_sample_detections_{model_path_fix}.tex')
+                latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detections_{model_path_fix}.tex')
                 with open(latex_path, 'w') as f:
                     f.write(latex_table)
                 logger.info(f"LaTeX correlation table saved to {latex_path}")
                 
                 #save MD
-                md_path = os.path.join(self.markdown_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.md')
+                md_path = os.path.join(self.markdown_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detections_{model_path_fix}.md')
                 with open(md_path, 'w') as f:
                     f.write(summary_df.to_markdown())
                 logger.info(f"Markdown table saved to {md_path}")
@@ -788,12 +785,12 @@ class WorkloadEvaluator:
                 plt.tight_layout()
                 #plt.show()
                 model_path_fix = current_evaluation.replace("/", "-")
-                plt.savefig(os.path.join(self.plot_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.png'))
+                plt.savefig(os.path.join(self.plot_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detections_{model_path_fix}.png'))
                 plt.close()
                 print(f"\nCombined ROC curves saved to '{self.plot_dir}'.")
 
 
-    def proof_of_concept_ambiguity_sample_detection_latex_tabel(self):
+    def proof_of_concept_ambiguity_sample_detection_latex_tabel(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60):
         results_list = []
 
         for ds in datasets:
@@ -835,15 +832,13 @@ class WorkloadEvaluator:
                         workload.df['entropy_agreement'] = workload.df.apply(lambda row: self.compute_entropy_invert(row, self.label_columns), axis=1) 
                         
                         # Find the best threshold combination based on error rate
-                        threshold_range_start = 60
-                        threshold_range_end = 95
 
                         best_threshold_combination, lowest_error_rate, _ = workload.find_best_threshold_combination_based_on_error_rate(
                             agreement_column='entropy_agreement',
                             min_threshold=threshold_range_start,
                             max_threshold=threshold_range_end,
-                            min_agreement_threshold=threshold_range_start,
-                            max_agreement_threshold=threshold_range_end,
+                            min_agreement_threshold=threshold_agreement_start,
+                            max_agreement_threshold=threshold_agreement_end,
                             random_threshold=random_threshold,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
                         )
@@ -895,13 +890,13 @@ class WorkloadEvaluator:
         )
 
 
-        latex_path = os.path.join(self.latex_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel.tex')
+        latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel.tex')
         with open(latex_path, 'w') as f:
             f.write(latex_table)
         logger.info(f"LaTeX correlation table saved to {latex_path}")
         
         #save MD
-        md_path = os.path.join(self.markdown_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel.md')
+        md_path = os.path.join(self.markdown_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel.md')
         with open(md_path, 'w') as f:
             f.write(results_df.to_markdown())
         logger.info(f"Markdown table saved to {md_path}")        
@@ -931,12 +926,12 @@ class WorkloadEvaluator:
 
         latex_table = results_df.to_latex(index=False, caption='Performance Metrics for Ambiguity Detection Techniques', label='table:case_study_results')
         #print(latex_table)
-        latex_path = os.path.join(self.latex_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel_formatted.tex')
+        latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel_formatted.tex')
         with open(latex_path, 'w') as f:
             f.write(latex_table)
             
         #save MD
-        md_path = os.path.join(self.markdown_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel_formatted.md')
+        md_path = os.path.join(self.markdown_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel_formatted.md')
         with open(md_path, 'w') as f:
             f.write(results_df.to_markdown())
         logger.info(f"Markdown table saved to {md_path}")    
@@ -1096,8 +1091,9 @@ if __name__ == "__main__":
     evaluator.scatter_plot_correlation_user_vs_models_entropy()
     evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
     evaluator.calculate_JSD_MSE_CORR()
-    evaluator.proof_of_concept_ambiguity_sample_detection()
-    evaluator.proof_of_concept_ambiguity_sample_detection(random_threshold=0.5)
+    evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+
     evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel()
     evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC() # this could be merged with the other ROC plotting ... 
 
