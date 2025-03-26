@@ -737,7 +737,6 @@ class WorkloadEvaluator:
                         fpr, tpr, thresholds = roc_curve(y_true, y_scores)
                         #roc_auc = auc(fpr, tpr)
                         plt.plot(fpr, tpr, label=f'{predictor} (AUC = {roc_auc:.2f})')
-                    plt.plot([0, 1], [0, 1], 'k--')  
                     plt.xlim([0.0, 1.0])
                     plt.ylim([0.0, 1.05])
                     plt.xlabel('False Positive Rate')
@@ -776,10 +775,11 @@ class WorkloadEvaluator:
                     fpr = roc_data[tech]['fpr']
                     tpr = roc_data[tech]['tpr']
                     auc = roc_data[tech]['auc']
-                    plt.plot(fpr, tpr, label=f"{tech.capitalize()} (AUC = {auc:.2f})")
-                    
-                plt.plot([0, 1], [0, 1], 'k--', label='Random Chance')
-
+                    if tech == 'random':
+                        plt.plot(fpr, tpr,  'k--', label=f"{tech.capitalize()} (AUC = {auc:.2f})")
+                    else:
+                        plt.plot(fpr, tpr, label=f"{tech.capitalize()} (AUC = {auc:.2f})")
+    
                 plt.xlabel('False Positive Rate', fontsize=14)
                 plt.ylabel('True Positive Rate', fontsize=14)
                 plt.title('ROC Curves for Mean Runs of Each Technique', fontsize=16)
