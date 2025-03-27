@@ -38,14 +38,14 @@ class AmbiUtils:
         workload['ambiguous'] = condition
         
         if random_threshold is not None:
-            workload['ambiguous'] = np.random.rand(len(workload)) < random_threshold
+            workload['ambiguous'] = np.random.rand(len(workload)) > random_threshold / 100.0
+            # random threshold and model threshold should both be 60%.
             #logger.info(f"Ambiguity column set using random chance ({random_threshold*100:.2f}%).")
         #else:
         #    logger.info("Ambiguity column set based on threshold conditions.")
         if debug:
             ambiguous_percentage = workload['ambiguous'].mean() * 100
             logger.debug(f"Ambiguous Samples: {ambiguous_percentage:.2f}% of the dataset")
-
         return workload
 
     def agreement_based_ambiguity_detection(
@@ -64,6 +64,8 @@ class AmbiUtils:
             logger.debug(f"Threshold Percentile: {threshold_percentile}%")
             logger.debug(f"Threshold Value (computed from {agreement_column}): {threshold_value}")
 
+
+        # this should be > so that all thresholds are consistent. for now I won't change it.
         df['ambiguous_based_on_agreement'] = df[agreement_column] < threshold_value
 
         if debug:
@@ -326,22 +328,33 @@ class AmbiUtils:
         min_agreement_threshold: int = 70,
         max_agreement_threshold: int = 70,
         agreement_column: str = 'highest_agreement',
-        debug: bool = False
+        debug: bool = False,
+        random_threshold: bool = None
     ) -> tuple:
- 
+        print('random threshold')
+        print(random_threshold)
         best_threshold_combination = None
         lowest_error_rate = 100  # Start with the maximum error rate (100%)
         results = []
         for threshold in range(min_threshold, max_threshold + 1):
             for agreement_threshold in range(min_agreement_threshold, max_agreement_threshold + 1):
                 df_copy = workload.copy()
-
-                self.threshold_based_ambiguity_detection(
-                    workload=df_copy,
-                    columns=columns,
-                    default_threshold_percentile=threshold,
-                    debug=False
-                )
+                if random_threshold:
+                    self.threshold_based_ambiguity_detection(
+                        workload=df_copy,
+                        columns=columns,
+                        default_threshold_percentile=threshold,
+                        debug=False,
+                        random_threshold=threshold
+                    )
+                else:
+                    self.threshold_based_ambiguity_detection(
+                        workload=df_copy,
+                        columns=columns,
+                        default_threshold_percentile=threshold,
+                        debug=False,
+                        random_threshold=None
+                    )
 
                 self.agreement_based_ambiguity_detection(
                     df=df_copy,
@@ -387,6 +400,31 @@ class AmbiUtils:
             print(f"\nBest Threshold Combination: Threshold = {best_threshold_combination[0]}, "
                 f"Agreement Threshold = {best_threshold_combination[1]}")
             print(f"Lowest Error Rate: {lowest_error_rate:.2f}%")
+        
+            if random_threshold:
+                self.threshold_based_ambiguity_detection(
+                    workload=workload,
+                    columns=columns,
+                    default_threshold_percentile=best_threshold_combination[0],
+                    debug=False,
+                    random_threshold=best_threshold_combination[0]
+                )
+            else:
+                self.threshold_based_ambiguity_detection(
+                    workload=workload,
+                    columns=columns,
+                    default_threshold_percentile=best_threshold_combination[0],
+                    debug=False,
+                    random_threshold=None
+                )
+
+            self.agreement_based_ambiguity_detection(
+                df=workload,
+                agreement_column=agreement_column,
+                threshold_percentile=best_threshold_combination[1],
+                debug=False
+            )
+
         else:
             print("\nNo valid threshold combination found.")
 

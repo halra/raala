@@ -79,6 +79,7 @@ class WorkloadEvaluator:
             'mc': 'MC Dropout',
             'smoothing': 'Label Smoothing',
             'de': 'Deep Ensemble',
+            'random': 'Random Baseline',
             'prajjwal1/bert-small' :'prajjwal1-bert-small',
             'ub': 'Upper Bound',
             'entropy_agreement': 'Label Ambiguity Score',
@@ -593,10 +594,10 @@ class WorkloadEvaluator:
                     logger.info(f"Markdown table saved to {md_path}")
 
 
-    def proof_of_concept_ambiguity_sample_detection(self, random_threshold=None):
+    def proof_of_concept_ambiguity_sample_detection(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60):
         summary_data = [] # TODO this shold be recreated on each model run, now it accumulates the tables ... 
         roc_data = {}
-        print("Running proof of concept ambiguity detection... with random_threshold", random_threshold)
+        print("Running proof of concept ambiguity detection")
         for model in models:
             for ds in datasets:
                 for tech in techniques:
@@ -610,44 +611,42 @@ class WorkloadEvaluator:
                     fprs = []
                     tprs = []
                     predictors = None
-                    
+
                     for i in range(1, 4):  # 1, 2, 3
                         current_evaluation = f"{model}_{ds}_{tech}_{i}"
-                        workload = Workload.load(
-                            workload_name=current_evaluation,
-                            load_models=False,
-                            quiet=True 
-                        )
-                        
+
+                        if tech == 'random':
+                            placeholder_name = f"{model}_{ds}_baseline_{i}"
+                            random_threshold = True
+
+                            workload = Workload.load(
+                                workload_name=placeholder_name,
+                                load_models=False,
+                                quiet=True 
+                            )
+                            workload.model_name = 'random'
+                            workload.name = current_evaluation
+                        else:
+                            random_threshold = False
+                            workload = Workload.load(
+                                workload_name=current_evaluation,
+                                load_models=False,
+                                quiet=True 
+                            )
+
                         self.label_columns = self.load_labels(workload)
                         #invert entropy to work with the detection algorithm
                         workload.df['entropy_agreement'] = workload.df.apply(lambda row: self.compute_entropy_invert(row, self.label_columns), axis=1) 
                         
-                        workload.test_detection(
-                            agreement_column="entropy_agreement", 
-                            default_threshold_percentile=60,
-                            threshold_percentile_agreement=60,
-                            columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
-                            quiet=True,
-                            random_threshold=random_threshold
-                        )
                         df = workload.df
-                        filtered_df = df[(df['ambiguous'] == True) & (df['ambiguous_based_on_agreement'] == True)]
-                        filtered_df_neg = df[(df['ambiguous'] == False) & (df['ambiguous_based_on_agreement'] == False)]
-                        
 
-                        percentage = ((len(filtered_df) + len(filtered_df_neg)) / len(df)) * 100
-                        percentages.append(percentage)
-                        
-                        print(f"For Evaluation: {current_evaluation}")
-                        print(f"Percentage of rows where ambiguous_based_on_agreement is True == True and False == False: {percentage:.2f}%\n")
-                        
                         best_threshold_combination, lowest_error_rate, results_df = workload.find_best_threshold_combination_based_on_error_rate(
                             agreement_column='entropy_agreement',
-                            min_threshold=60,
-                            max_threshold=95,
-                            min_agreement_threshold=60,
-                            max_agreement_threshold=95,
+                            min_threshold=threshold_range_start,
+                            max_threshold=threshold_range_end,
+                            min_agreement_threshold=threshold_agreement_start,
+                            max_agreement_threshold=threshold_agreement_end,
+                            random_threshold=random_threshold,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd']
                         )
                         
@@ -675,44 +674,44 @@ class WorkloadEvaluator:
                         recalls.append(recall)
                         f1_scores.append(f1)        
 
-                    median_error_rate = np.median(error_rates)
+                    mean_error_rate = np.mean(error_rates)
                     std_error_rate = np.std(error_rates, ddof=1) 
-                    median_percentage = np.median(percentages)
+                    mean_percentage = np.mean(percentages)
                     std_percentage = np.std(percentages, ddof=1) 
-                    median_accuracy = np.median(accuracies)
+                    mean_accuracy = np.mean(accuracies)
                     std_accuracy = np.std(accuracies, ddof=1)
-                    median_precision = np.median(precisions)
+                    mean_precision = np.mean(precisions)
                     std_precision = np.std(precisions, ddof=1)
-                    median_recall = np.median(recalls)
+                    mean_recall = np.mean(recalls)
                     std_recall = np.std(recalls, ddof=1)
-                    median_f1 = np.median(f1_scores)
+                    mean_f1 = np.mean(f1_scores)
                     std_f1 = np.std(f1_scores, ddof=1)
-                    median_auc = np.median(aucs)
+                    mean_auc = np.mean(aucs)
                     std_auc = np.std(aucs, ddof=1)
                     
                     mean_predictors = predictors / 3
 
                     summary_data.append({
                         'Technique': tech,
-                        'Median Lowest Error Rate': median_error_rate,
+                        'Mean Lowest Error Rate': mean_error_rate,
                         'STD Lowest Error Rate': std_error_rate,
-                        'Median Percentage': median_percentage,
+                        'Mean Percentage': mean_percentage,
                         'STD Percentage': std_percentage,
-                        'Median Accuracy': median_accuracy,
+                        'Mean Accuracy': mean_accuracy,
                         'STD Accuracy': std_accuracy,
-                        'Median Precision': median_precision,
+                        'Mean Precision': mean_precision,
                         'STD Precision': std_precision,
-                        'Median Recall': median_recall,
+                        'Mean Recall': mean_recall,
                         'STD Recall': std_recall,
-                        'Median F1 Score': median_f1,
+                        'Mean F1 Score': mean_f1,
                         'STD F1 Score': std_f1,
-                        'Median AUC': median_auc,
+                        'Mean AUC': mean_auc,
                         'STD AUC': std_auc
                     })
                     
 
                     error_rates_array = np.array(error_rates)
-                    median_error_rate_idx = np.argmin(np.abs(error_rates_array - median_error_rate))
+                    mean_error_rate_idx = np.argmin(np.abs(error_rates_array - mean_error_rate))
                     
 
                     print("fprs", fprs)
@@ -735,7 +734,6 @@ class WorkloadEvaluator:
                         fpr, tpr, thresholds = roc_curve(y_true, y_scores)
                         #roc_auc = auc(fpr, tpr)
                         plt.plot(fpr, tpr, label=f'{predictor} (AUC = {roc_auc:.2f})')
-                    plt.plot([0, 1], [0, 1], 'k--')  
                     plt.xlim([0.0, 1.0])
                     plt.ylim([0.0, 1.05])
                     plt.xlabel('False Positive Rate')
@@ -744,8 +742,6 @@ class WorkloadEvaluator:
                     plt.legend(loc='lower right')
                     #plt.show()
                     model_path_fix = current_evaluation.replace("/", "-")
-                    if random_threshold is not None:
-                        model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
 
                 summary_df = pd.DataFrame(summary_data)
                 #print("=== Summary Table ===\n")
@@ -759,15 +755,14 @@ class WorkloadEvaluator:
                     label="tab:evaluation_metrics"
                 )
                 model_path_fix = current_evaluation.replace("/", "-")
-                if random_threshold is not None:
-                    model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
-                latex_path = os.path.join(self.latex_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.tex')
+
+                latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detections_{model_path_fix}.tex')
                 with open(latex_path, 'w') as f:
                     f.write(latex_table)
                 logger.info(f"LaTeX correlation table saved to {latex_path}")
                 
                 #save MD
-                md_path = os.path.join(self.markdown_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.md')
+                md_path = os.path.join(self.markdown_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detections_{model_path_fix}.md')
                 with open(md_path, 'w') as f:
                     f.write(summary_df.to_markdown())
                 logger.info(f"Markdown table saved to {md_path}")
@@ -777,26 +772,25 @@ class WorkloadEvaluator:
                     fpr = roc_data[tech]['fpr']
                     tpr = roc_data[tech]['tpr']
                     auc = roc_data[tech]['auc']
-                    plt.plot(fpr, tpr, label=f"{tech.capitalize()} (AUC = {auc:.2f})")
-                    
-                plt.plot([0, 1], [0, 1], 'k--', label='Random Chance')
-
+                    if tech == 'random':
+                        plt.plot(fpr, tpr,  'k--', label=f"{tech.capitalize()} (AUC = {auc:.2f})")
+                    else:
+                        plt.plot(fpr, tpr, label=f"{tech.capitalize()} (AUC = {auc:.2f})")
+    
                 plt.xlabel('False Positive Rate', fontsize=14)
                 plt.ylabel('True Positive Rate', fontsize=14)
-                plt.title('ROC Curves for Median Runs of Each Technique', fontsize=16)
+                plt.title('ROC Curves for Mean Runs of Each Technique', fontsize=16)
                 plt.legend(fontsize=12)
                 plt.grid(True, ls="--", linewidth=0.5)
                 plt.tight_layout()
                 #plt.show()
                 model_path_fix = current_evaluation.replace("/", "-")
-                if random_threshold is not None:
-                    model_path_fix = f"{model_path_fix}_random_threshold_{random_threshold}"
-                plt.savefig(os.path.join(self.plot_dir, f'proof_of_concept_ambiguity_sample_detections_{model_path_fix}.png'))
+                plt.savefig(os.path.join(self.plot_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detections_{model_path_fix}.png'))
                 plt.close()
                 print(f"\nCombined ROC curves saved to '{self.plot_dir}'.")
 
 
-    def proof_of_concept_ambiguity_sample_detection_latex_tabel(self):
+    def proof_of_concept_ambiguity_sample_detection_latex_tabel(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60):
         results_list = []
 
         for ds in datasets:
@@ -812,28 +806,40 @@ class WorkloadEvaluator:
                         current_evaluation = f"{model}_{ds}_{tech}_{idx}"
                         print("Running on", current_evaluation)
                         
-                        workload = Workload.load(workload_name=current_evaluation, load_models=False, quiet=True)
+                        if tech == 'random':
+                            placeholder_name = f"{model}_{ds}_baseline_{idx}"
+                            random_threshold = True
+
+                            workload = Workload.load(
+                                workload_name=placeholder_name,
+                                load_models=False,
+                                quiet=True 
+                            )
+                            workload.model_name = 'random'
+                            workload.name = current_evaluation
+                        else:
+                            random_threshold = False
+                            workload = Workload.load(
+                                workload_name=current_evaluation,
+                                load_models=False,
+                                quiet=True 
+                            )
+
                         workload.df['Model'] = model
                         workload.df['Run'] = idx
+
                         self.label_columns= self.load_labels(workload=workload)
                         workload.df['entropy_agreement'] = workload.df.apply(lambda row: self.compute_entropy_invert(row, self.label_columns), axis=1) 
                         
-                        #detection test
-                        workload.test_detection(
-                            agreement_column="entropy_agreement",
-                            default_threshold_percentile=60,
-                            threshold_percentile_agreement=60,
-                            columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
-                            quiet=True  
-                        )
-                        
                         # Find the best threshold combination based on error rate
+
                         best_threshold_combination, lowest_error_rate, _ = workload.find_best_threshold_combination_based_on_error_rate(
                             agreement_column='entropy_agreement',
-                            min_threshold=60,
-                            max_threshold=60,
-                            min_agreement_threshold=60,
-                            max_agreement_threshold=60,
+                            min_threshold=threshold_range_start,
+                            max_threshold=threshold_range_end,
+                            min_agreement_threshold=threshold_agreement_start,
+                            max_agreement_threshold=threshold_agreement_end,
+                            random_threshold=random_threshold,
                             columns=['entropy_mean_prediction', 'mean_variance', 'mean_jsd'],
                         )
    
@@ -884,13 +890,13 @@ class WorkloadEvaluator:
         )
 
 
-        latex_path = os.path.join(self.latex_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel.tex')
+        latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel.tex')
         with open(latex_path, 'w') as f:
             f.write(latex_table)
         logger.info(f"LaTeX correlation table saved to {latex_path}")
         
         #save MD
-        md_path = os.path.join(self.markdown_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel.md')
+        md_path = os.path.join(self.markdown_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel.md')
         with open(md_path, 'w') as f:
             f.write(results_df.to_markdown())
         logger.info(f"Markdown table saved to {md_path}")        
@@ -920,12 +926,12 @@ class WorkloadEvaluator:
 
         latex_table = results_df.to_latex(index=False, caption='Performance Metrics for Ambiguity Detection Techniques', label='table:case_study_results')
         #print(latex_table)
-        latex_path = os.path.join(self.latex_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel_formatted.tex')
+        latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel_formatted.tex')
         with open(latex_path, 'w') as f:
             f.write(latex_table)
             
         #save MD
-        md_path = os.path.join(self.markdown_dir, 'proof_of_concept_ambiguity_sample_detection_latex_tabel_formatted.md')
+        md_path = os.path.join(self.markdown_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel_formatted.md')
         with open(md_path, 'w') as f:
             f.write(results_df.to_markdown())
         logger.info(f"Markdown table saved to {md_path}")    
@@ -1073,11 +1079,9 @@ if __name__ == "__main__":
     
     #models = ['bert', 'roberta', 'xlnet'] # Models to use in the batch
     #datasets = ['hate_gap', 'go_emotions', 'rt'] # Datasets to use in the batch
-    #techniques = ["baseline", "mc", "smoothing", "de"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    #techniques = ["baseline", "mc", "smoothing", "de", "random"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     
-    models = ['google-bert/bert-base-uncased'] # Models to use in the batch
-    datasets = ['go_emotions'] # Datasets to use in the batch
-    techniques = ["ub"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    techniques = ['random','de','baseline'] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     num_runs = 3  # Number of runs per technique, the models have to be trained and exists in the saved_results folder
     enable_plotting = True  # Set to False to disable plotting # TODO impl plotting and verbose output.
 
@@ -1087,8 +1091,9 @@ if __name__ == "__main__":
     evaluator.scatter_plot_correlation_user_vs_models_entropy()
     evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
     evaluator.calculate_JSD_MSE_CORR()
-    evaluator.proof_of_concept_ambiguity_sample_detection()
-    evaluator.proof_of_concept_ambiguity_sample_detection(random_threshold=0.5)
+    evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+
     evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel()
     evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC() # this could be merged with the other ROC plotting ... 
 
