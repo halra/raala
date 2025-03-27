@@ -544,6 +544,8 @@ class WorkloadEvaluator:
 
 #TODO here we have to calc the std differently
     def calculate_JSD_MSE_CORR(self):
+        
+        latex_table_helper_list= []
         for ds in self.datasets:
             num_techs = len(techniques)
             num_cols = 2
@@ -551,10 +553,6 @@ class WorkloadEvaluator:
             fig, axes = plt.subplots(num_rows, num_cols, figsize=(15, 10))
             axes = axes.flatten()
             
-            # annotator[0.2,0.2,0.3,0.1,0.2] model[0.1,0.1,0.4,0.2,0.2]
-            # JSD = 0.1 * log(0.1/0.2) + 0.2 * log(0.2/0.2) + 0.3 * log(0.3/0.4) + 0.1 * log(0.1/0.2) + 0.2 * log(0.2/0.2)
-            # corr = np.corrcoef([0.2,0.2,0.3,0.1,0.2], [0.1,0.1,0.4,0.2,0.2])
-            # now we sum up the jsd of each row and take the mean, this is the high std i guess
             for idx_outer, tech in enumerate(techniques):
                 
                 for model in self.models:
@@ -679,7 +677,24 @@ class WorkloadEvaluator:
                     # Calculate statistics (we care about mean and std) over the 3 seeds
                     summary_stats = summary_df[metrics].describe()
                     #print("summary_stats for", current_evaluation)
-                    #print(summary_stats)
+                    print(summary_stats)
+                    
+                    """
+                    make a struct like:
+                    {
+                        dataset: go_emotions,
+                        technique: random,
+                        model: bert,
+                        table: {columns and rows}
+                    }
+                    """
+                    latex_table_helper_list.append({
+                        "dataset": ds,  
+                        "technique": tech,
+                        "model": model,
+                        "table": summary_stats
+                    })
+                    
                     #LaTeX table
                     latex_table = summary_stats.to_latex(
                         index=False,
@@ -699,6 +714,122 @@ class WorkloadEvaluator:
                     with open(md_path, 'w') as f:
                         f.write(summary_stats.to_markdown())
                     logger.info(f"Markdown table saved to {md_path}")
+
+        print(latex_table_helper_list)
+        l_table = self.generate_jsd_corr_mse_table(latex_table_helper_list)
+        print(l_table)
+
+
+    def generate_jsd_corr_mse_table(self, data):
+        from collections import OrderedDict
+
+        desired_order = ['baseline', 'mc', 'smoothing', 'de', 'oracle']
+        
+
+        aggregated = {}  # key: (dataset, technique) -> dict with aggregated values.
+        counts = {}
+        for entry in data:
+            ds = entry['dataset']
+            tech = entry['technique']
+            tbl = entry['table'] 
+            jsd_mean  = tbl.loc['mean', 'JSD'] # this is actually better thank using the idx
+            jsd_std   = tbl.loc['std',  'JSD']
+            corr_mean = tbl.loc['mean', 'Correlation']
+            corr_std  = tbl.loc['std',  'Correlation']
+            mse_mean  = tbl.loc['mean', 'MSE']
+            mse_std   = tbl.loc['std',  'MSE']
+            key = (ds, tech)
+            if key not in aggregated:
+                aggregated[key] = {
+                    'JSD_mean': 0, 'JSD_std': 0,
+                    'Correlation_mean': 0, 'Correlation_std': 0,
+                    'MSE_mean': 0, 'MSE_std': 0
+                }
+                counts[key] = 0
+            aggregated[key]['JSD_mean'] += jsd_mean
+            aggregated[key]['JSD_std']  += jsd_std
+            aggregated[key]['Correlation_mean'] += corr_mean
+            aggregated[key]['Correlation_std']  += corr_std
+            aggregated[key]['MSE_mean']   += mse_mean
+            aggregated[key]['MSE_std']    += mse_std
+            counts[key] += 1
+
+        for key in aggregated:
+            aggregated[key]['JSD_mean'] /= counts[key]
+            aggregated[key]['JSD_std']  /= counts[key]
+            aggregated[key]['Correlation_mean'] /= counts[key]
+            aggregated[key]['Correlation_std']  /= counts[key]
+            aggregated[key]['MSE_mean']   /= counts[key]
+            aggregated[key]['MSE_std']    /= counts[key]
+
+        table_rows = []
+        all_datasets = sorted({entry['dataset'] for entry in data})
+        for ds in all_datasets:
+            for tech in desired_order:
+                if tech == None:
+                    row = {
+                        'Dataset': self.mapping_helper.get(ds, ds),
+                        'Technique': 'Oracle Fine-Tuning',
+                        'Mean JSD': '',
+                        'Mean Correlation': '',
+                        'Mean MSE': ''
+                    }
+                    table_rows.append(row)
+                else:
+                    key = (ds, tech)
+                    if key in aggregated:
+                        vals = aggregated[key]
+                        row = {
+                            'Dataset': self.mapping_helper.get(ds, ds),
+                            'Technique': self.mapping_helper.get(tech, tech),
+                            'Mean JSD': f"{vals['JSD_mean']:.3f} $\\pm$ {vals['JSD_std']:.3f}",
+                            'Mean Correlation': f"{vals['Correlation_mean']:.3f} $\\pm$ {vals['Correlation_std']:.3f}",
+                            'Mean MSE': f"{vals['MSE_mean']:.4f} $\\pm$ {vals['MSE_std']:.4f}"
+                        }
+                        table_rows.append(row)
+                    else:
+                        pass
+
+        # rows by dataset for multirow.
+        grouped_rows = OrderedDict()
+        for row in table_rows:
+            ds = row['Dataset']
+            if ds not in grouped_rows:
+                grouped_rows[ds] = []
+            grouped_rows[ds].append(row)
+
+
+        latex_lines = [] # TODO do the other tables creation like this ... so we can skip the \n on each line
+        latex_lines.append("\\begin{table*}[htbp]")
+        latex_lines.append("    \\centering")
+        latex_lines.append("    \\small")
+        latex_lines.append("")
+        latex_lines.append("    \\begin{tabular}{llccc}")
+        latex_lines.append("    \\toprule")
+        latex_lines.append("    \\textbf{Dataset} & \\textbf{Technique} & \\textbf{Mean JSD} & \\textbf{Mean Correlation} & \\textbf{Mean MSE} \\\\")
+        latex_lines.append("    \\midrule")
+        
+        dataset_keys = list(grouped_rows.keys())
+        for i, ds in enumerate(dataset_keys):
+            rows = grouped_rows[ds]
+            n_rows = len(rows)
+            for j, row in enumerate(rows):
+                if j == 0:
+                    latex_lines.append(f"    \\multirow{{{n_rows}}}{{*}}{{{row['Dataset']}}} & {row['Technique']} & {row['Mean JSD']} & {row['Mean Correlation']} & {row['Mean MSE']} \\\\")
+                else:
+                    latex_lines.append(f"     & {row['Technique']} & {row['Mean JSD']} & {row['Mean Correlation']} & {row['Mean MSE']} \\\\")
+            if i < len(dataset_keys) - 1:
+                latex_lines.append("    \\midrule")
+        latex_lines.append("    \\bottomrule")
+        latex_lines.append("    \\end{tabular}")
+        models_used = sorted({entry['model'].upper() for entry in data})
+        models_str = ", ".join(models_used)
+        latex_lines.append(f"        \\caption{{Aggregated Mean Results (averaged over {models_str})}}")
+        latex_lines.append("    \\label{table:results_jsd_correlation_mse}")
+        latex_lines.append("    \\vspace{0.2cm}")
+        latex_lines.append("\\end{table*}")
+
+        return "\n".join(latex_lines)
 
 
     def proof_of_concept_ambiguity_sample_detection(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60):
@@ -1198,10 +1329,10 @@ if __name__ == "__main__":
     techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
-    evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
-    evaluator.ambiguity_human_vs_models_correlation()
-    evaluator.scatter_plot_correlation_user_vs_models_entropy()
-    evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
+    #evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
+    #evaluator.ambiguity_human_vs_models_correlation()
+    #evaluator.scatter_plot_correlation_user_vs_models_entropy()
+    #evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
     evaluator.calculate_JSD_MSE_CORR()
     evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
     evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
