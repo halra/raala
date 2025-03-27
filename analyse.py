@@ -715,9 +715,13 @@ class WorkloadEvaluator:
                         f.write(summary_stats.to_markdown())
                     logger.info(f"Markdown table saved to {md_path}")
 
-        print(latex_table_helper_list)
+        #print(latex_table_helper_list)
         l_table = self.generate_jsd_corr_mse_table(latex_table_helper_list)
-        print(l_table)
+        improved_latex_path = os.path.join(self.latex_dir, f'improved_calculate_JSD_MSE_CORR_{model_path_fix}_combined.tex')
+        with open(improved_latex_path, 'w') as f:
+            f.write(l_table.to_markdown())
+        logger.info(f"improved LaTeX table saved to {improved_latex_path}")
+
 
 
     def generate_jsd_corr_mse_table(self, data):
@@ -769,7 +773,7 @@ class WorkloadEvaluator:
                 if tech == None:
                     row = {
                         'Dataset': self.mapping_helper.get(ds, ds),
-                        'Technique': 'Oracle Fine-Tuning',
+                        'Technique': 'Failed to load',
                         'Mean JSD': '',
                         'Mean Correlation': '',
                         'Mean MSE': ''
