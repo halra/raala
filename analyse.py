@@ -677,7 +677,7 @@ class WorkloadEvaluator:
                     # Calculate statistics (we care about mean and std) over the 3 seeds
                     summary_stats = summary_df[metrics].describe()
                     #print("summary_stats for", current_evaluation)
-                    print(summary_stats)
+                    #print(summary_stats)
                     
                     """
                     make a struct like:
@@ -717,9 +717,9 @@ class WorkloadEvaluator:
 
         #print(latex_table_helper_list)
         l_table = self.generate_jsd_corr_mse_table(latex_table_helper_list)
-        improved_latex_path = os.path.join(self.latex_dir, f'improved_calculate_JSD_MSE_CORR_{model_path_fix}_combined.tex')
+        improved_latex_path = os.path.join(self.latex_dir, f'improved_calculate_JSD_MSE_CORR_combined.tex')
         with open(improved_latex_path, 'w') as f:
-            f.write(l_table.to_markdown())
+            f.write(l_table)
         logger.info(f"improved LaTeX table saved to {improved_latex_path}")
 
 
@@ -826,7 +826,7 @@ class WorkloadEvaluator:
                 latex_lines.append("    \\midrule")
         latex_lines.append("    \\bottomrule")
         latex_lines.append("    \\end{tabular}")
-        models_used = sorted({entry['model'].upper() for entry in data})
+        models_used = sorted({entry['model'] for entry in data})
         models_str = ", ".join(models_used)
         latex_lines.append(f"        \\caption{{Aggregated Mean Results (averaged over {models_str})}}")
         latex_lines.append("    \\label{table:results_jsd_correlation_mse}")
