@@ -83,7 +83,11 @@ class WorkloadEvaluator:
             'prajjwal1/bert-small' :'prajjwal1-bert-small',
             'ub': 'Upper Bound',
             'entropy_agreement': 'Label Ambiguity Score',
-            'entropy_mean_prediction': 'Model Uncertainty Score'
+            'entropy_mean_prediction': 'Model Uncertainty Score',
+            'Baseline': 'Baseli.',
+            'MC Dropout': 'MCD',
+            'Deep Ensemble': 'DE',
+            "Label Smoothing": "LS",
         }
 
     ## Helper Functions
@@ -222,13 +226,107 @@ class WorkloadEvaluator:
             f.write(results_df.to_markdown())
         logger.info(f"Markdown table saved to {latex_path}")
 
-        
+
+
+    def generate_latex_multiro_table(self, long_table, caption, label):
+        def latex_escape(text):
+            if not isinstance(text, str):
+                text = str(text)
+            text = text.replace("%", "\\%")
+            text = text.replace("+-", "$\\pm$")
+            text = text.replace("±", "$\\pm$")
+            return text
+
+        datasets = sorted(long_table["Dataset"].unique())
+        pivoted_rows = []
+        for (model, technique), group in long_table.groupby(["Model", "Technique"]):
+            technique = self.mapping_helper[technique] # shorten the technique name
+            row = {"Model": model, "Method": technique}
+            mean_vals = []
+            for ds in datasets:
+                sub = group[group["Dataset"] == ds]
+                if not sub.empty:
+                    data = sub.iloc[0]
+                    combined_corr = f"{data['Mean Correlation']} $\\pm$ {data['Std Dev %']}"
+                    row[f"{ds} Corr."] = combined_corr
+                    row[f"{ds} % Improv."] = data["Imp. over Baseline"]
+                    try:
+                        mean_vals.append(float(data["Mean Correlation"]))
+                    except Exception:
+                        pass
+                else:
+                    row[f"{ds} Corr."] = ""
+                    row[f"{ds} % Improv."] = ""
+            if mean_vals:
+                row["Average Corr."] = round(sum(mean_vals) / len(mean_vals), 3)
+            else:
+                row["Average Corr."] = ""
+            pivoted_rows.append(row)
+
+        wide_table = pd.DataFrame(pivoted_rows)
+        dataset_cols = []
+        for ds in datasets:
+            dataset_cols.extend([f"{ds} Corr.", f"{ds} % Improv."])
+        new_columns = ["Model", "Method"] + dataset_cols + ["Average Corr."]
+        wide_table = wide_table[new_columns]
+
+        n_pairs = len(datasets)
+        total_cols = 2 + 2 * n_pairs + 1
+        col_format = "ll" + "c" * (total_cols - 2)
+
+        header  = "\\begin{table*}[h!]\n"
+        header += "\\setlength{\\tabcolsep}{4pt}\n"
+        header += "\\centering\n"
+        header += "\\small\n\n"
+        header += "\\begin{tabular}{" + col_format + "}\n"
+        header += "\\toprule\n"
+
+        first_row = "\\multicolumn{1}{c}{} & \\multicolumn{1}{c}{}"
+        for ds in datasets:
+            first_row += " & \\multicolumn{2}{c}{\\textbf{" + ds + "}}"
+        first_row += " & \\multicolumn{1}{c}{\\textbf{Average}} \\\\ \n"
+        second_row = "\\textbf{Model} & \\textbf{Method}"
+        for ds in datasets:
+            second_row += " & \\textbf{Corr.} & \\textbf{\\% Improv.}"
+        second_row += " & \\textbf{Corr.} \\\\ \n"
+
+        header += first_row + second_row
+        header += "\\midrule\n"
+
+        body = ""
+        model_groups = list(wide_table.groupby("Model"))
+        for idx, (model, group) in enumerate(model_groups):
+            group = group.reset_index(drop=True)
+            nrows = len(group)
+            for i, row in group.iterrows():
+                if i == 0:
+                    model_cell = "\\multirow{" + str(nrows) + "}{*}{" + latex_escape(row["Model"]) + "}"
+                else:
+                    model_cell = ""
+                row_cells = [model_cell, latex_escape(row["Method"])]
+                for ds in datasets:
+                    row_cells.append(latex_escape(row[f"{ds} Corr."]))
+                    row_cells.append(latex_escape(row[f"{ds} % Improv."]))
+                row_cells.append(latex_escape(row["Average Corr."]))
+                row_line = " & ".join(row_cells) + " \\\\ \n"
+                body += row_line
+            if idx < len(model_groups) - 1:
+                body += "\\midrule\n"
+            
+        footer  = "\\bottomrule\n"
+        footer += "\\end{tabular}\n"
+        footer += "\\caption{" + caption + "}\n"
+        footer += "\\label{" + label + "}\n"
+        footer += "\\end{table*}"
+
+        return header + body + footer
+
     
     def ambiguity_human_vs_models_correlation(self):
         latex_table_prepared =pd.DataFrame(columns=['Technique','Dataset','Model' ,'Mean Correlation','Std Dev %','Imp. over Baseline'])
-
-        for model in models:
-            for ds in datasets:
+        print("models", self.models, "datasets", self.datasets, "techniques", techniques)
+        for model in self.models:
+            for ds in self.datasets:
                 for tech in techniques:
                     tabels = []
                     for i in range(0,3):
@@ -263,34 +361,34 @@ class WorkloadEvaluator:
                         diff_col_name = f'Diff_Corr_{idx}'
                         mean_std_corr_df[diff_col_name] = correlation_df[f'Corr_{idx}'] - correlation_df['Mean Correlation']
 
-                    mean_std_corr_df['Mean Correlation'] = mean_std_corr_df['Mean Correlation'].round(4)
-                    mean_std_corr_df['Std Correlation'] = mean_std_corr_df['Std Correlation'].round(4)
+                    mean_std_corr_df['Mean Correlation'] = mean_std_corr_df['Mean Correlation'].round(3)
+                    mean_std_corr_df['Std Correlation'] = mean_std_corr_df['Std Correlation'].round(3)
                     for idx in range(1, len(tabels) + 1):
                         diff_col_name = f'Diff_Corr_{idx}'
-                        mean_std_corr_df[diff_col_name] = mean_std_corr_df[diff_col_name].round(4)
+                        mean_std_corr_df[diff_col_name] = mean_std_corr_df[diff_col_name].round(3)
 
                     
-                    base_value = 1
-                    if tech == "baseline":
+                    #base_value = 1
+                    if tech.lower() == "baseline":
                         base_value = mean_std_corr_df['Mean Correlation'][1] # 1 is entropy
                     
                     if (mean_std_corr_df['Mean Correlation'][1] / base_value) < 1:
-                        coeff = 1
+                        coeff = -1
                     else:
                         coeff = 1
                         
-                    #print((mean_std_corr_df['Mean Correlation'][1] / base_value))
-                    base_value = 1
+                    #TODO if base_value does not exist, we have to set it to some value. this may happen if we dont use a baseline technique
                     
                     if model in self.mapping_helper:
                         model_name = self.mapping_helper[model]
                     else:
                         model_name = model
+                        
+                    improvement = coeff * ( mean_std_corr_df['Mean Correlation'][1] / base_value - 1) * 100
+                    improvement_str = f"{improvement:.0f}%"
                     
-                    #print(mean_std_corr_df['Mean Correlation'][1])
-                    latex_table_prepared.loc[len(latex_table_prepared)] = [self.mapping_helper[tech],self.mapping_helper[ds], model_name, mean_std_corr_df['Mean Correlation'][1], mean_std_corr_df['Std Correlation'][1], str(  coeff *(- 100 + (mean_std_corr_df['Mean Correlation'][1] / base_value) * 100).round(1)) + "%"] 
-                    #print(latex_table_prepared.loc[len(latex_table_prepared) - 1])
-                    ######
+                    latex_table_prepared.loc[len(latex_table_prepared)] = [self.mapping_helper[tech],self.mapping_helper[ds], model_name, mean_std_corr_df['Mean Correlation'][1], mean_std_corr_df['Std Correlation'][1], improvement_str] 
+
                     latex_table = latex_table_prepared[['Technique','Dataset','Model','Mean Correlation','Std Dev %','Imp. over Baseline']].to_latex(index=False, 
                                         caption=f'Mean Correlation Coefficients between Uncertainty Metrics and Empirical Entropy (Average of 3 Runs)',
                                         label='table:roberta_rotten_tomatoes_correlations',
@@ -299,9 +397,7 @@ class WorkloadEvaluator:
                     md_table_prepared = latex_table_prepared[['Technique','Dataset','Model','Mean Correlation','Std Dev %','Imp. over Baseline']]
 
                     #print(latex_table)
-        #latex_table_prepared
-        latex_table_prepared = pd.DataFrame(columns=['Technique','Dataset','Model','Mean Correlation','Std Dev %','Imp. over Baseline'])
-        
+
         #print(latex_table)
         latex_path = os.path.join(self.latex_dir, 'human_vs_models_correlatio.tex')
         with open(latex_path, 'w') as f:
@@ -313,11 +409,22 @@ class WorkloadEvaluator:
         with open(md_path, 'w') as f:
             f.write(md_table_prepared.to_markdown())
         logger.info(f"Markdown table saved to {md_path}")
+        
+        improved_human_vs_model_latex = self.generate_latex_multiro_table(
+            latex_table_prepared,
+            caption=('Mean correlation coefficients for all models (mean $\pm$ std) and percentage improvement over baseline. '
+                    'Bolded are the highest scores in each column per model.'),
+            label='table:results_correlations'
+        )
+        new_latex_path = os.path.join(self.latex_dir, 'improved_human_vs_models_correlatio.tex')
+        with open(new_latex_path, 'w') as f:
+            f.write(improved_human_vs_model_latex)
+        logger.info(f"New LaTeX correlation table saved to {new_latex_path}")
 
 
     def scatter_plot_correlation_user_vs_models_entropy(self):
-        for model in models:
-            for ds in datasets:
+        for model in self.models:
+            for ds in self.datasets:
                 for tech in techniques:
                     tabels = []
                     for i in range(0,3):
@@ -368,7 +475,7 @@ class WorkloadEvaluator:
         columns = ['entropy_agreement']  
         target_column = 'entropy_mean_prediction'  
 
-        for ds in datasets:
+        for ds in self.datasets:
             num_techs = len(techniques)
             num_cols = 2
             num_rows = math.ceil(num_techs / num_cols)
@@ -379,7 +486,7 @@ class WorkloadEvaluator:
                 ax = axes[idx_outer]
                 all_data = []
 
-                for model in models:
+                for model in self.models:
                     model_data = []
 
                     for idx in range(3): 
@@ -407,7 +514,7 @@ class WorkloadEvaluator:
                         ax=ax
                     )
                     palette = sns.color_palette()
-                    for idx_model, model in enumerate(models):
+                    for idx_model, model in enumerate(self.models):
                         model_data = df_combined[df_combined['Model'] == model]
                         sns.regplot(
                             data=model_data,
@@ -437,7 +544,7 @@ class WorkloadEvaluator:
 
 #TODO here we have to calc the std differently
     def calculate_JSD_MSE_CORR(self):
-        for ds in datasets:
+        for ds in self.datasets:
             num_techs = len(techniques)
             num_cols = 2
             num_rows = math.ceil(num_techs / num_cols)
@@ -450,7 +557,7 @@ class WorkloadEvaluator:
             # now we sum up the jsd of each row and take the mean, this is the high std i guess
             for idx_outer, tech in enumerate(techniques):
                 
-                for model in models:
+                for model in self.models:
                     model_data = []
                     tabels = []
                     for idx in range(3): 
@@ -598,8 +705,8 @@ class WorkloadEvaluator:
         summary_data = [] # TODO this shold be recreated on each model run, now it accumulates the tables ... 
         roc_data = {}
         print("Running proof of concept ambiguity detection")
-        for model in models:
-            for ds in datasets:
+        for model in self.models:
+            for ds in self.datasets:
                 for tech in techniques:
                     error_rates = []
                     percentages = []
@@ -793,9 +900,9 @@ class WorkloadEvaluator:
     def proof_of_concept_ambiguity_sample_detection_latex_tabel(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60):
         results_list = []
 
-        for ds in datasets:
+        for ds in self.datasets:
             for tech in techniques:
-                for model in models:
+                for model in self.models:
                     error_rates = []
                     precisions = []
                     recalls = []
@@ -943,10 +1050,10 @@ class WorkloadEvaluator:
 
         summary_data = []
 
-        roc_data = {tech: {ds: {'fpr': [], 'tpr': [], 'auc': []} for ds in datasets} for tech in techniques}
+        roc_data = {tech: {ds: {'fpr': [], 'tpr': [], 'auc': []} for ds in self.datasets} for tech in techniques}
 
-        for model in models:
-            for ds in datasets:
+        for model in self.models:
+            for ds in self.datasets:
                 plt.figure(figsize=(20, 20))  
                 grid_size = 2  
                 subplot_idx = 1  
@@ -1077,13 +1184,18 @@ class WorkloadEvaluator:
 
 if __name__ == "__main__":
     
-    #models = ['bert', 'roberta', 'xlnet'] # Models to use in the batch
-    #datasets = ['hate_gap', 'go_emotions', 'rt'] # Datasets to use in the batch
+    models = ["roberta", "bert", "xlnet"] # Models to use in the batch
+    datasets = ['go_emotions', "rt", "hate_gap"] # Datasets to use in the batch
     #techniques = ["baseline", "mc", "smoothing", "de", "random"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     
-    techniques = ['random','de','baseline'] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    techniques = ['mc','baseline', "smoothing", "de" ] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     num_runs = 3  # Number of runs per technique, the models have to be trained and exists in the saved_results folder
     enable_plotting = True  # Set to False to disable plotting # TODO impl plotting and verbose output.
+
+
+
+    # this fixes a bug, baseline must be the first technique since it provides the pivot value ....
+    techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
     evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
