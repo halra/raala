@@ -1317,6 +1317,26 @@ class WorkloadEvaluator:
 
 
 
+    def plot_histrogram(self, column, workload_name, title, xlabel, ylabel, bins=10,show=True, save=False):
+        # TODO put this into the plotting Class
+        base_path = os.path.join(os.getcwd(), "saved_results", workload_name)
+        df_path = os.path.join(base_path, "test.csv")
+        if not os.path.exists(df_path):
+            raise FileNotFoundError(f"The DataFrame file {df_path} does not exist.")
+        df = pd.read_csv(df_path)
+        plt.hist(df[column], bins=bins,  edgecolor='black')
+        plt.title(title)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        if save:
+            save_path = os.path.join(os.getcwd(),'analysis_results', 'plots', f"histogram_{workload_name}_{column}.png")
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        if show:
+            plt.show()
+        plt.close()
+
+
+
 if __name__ == "__main__":
     
     models = ["roberta", "bert", "xlnet"] # Models to use in the batch
@@ -1333,15 +1353,31 @@ if __name__ == "__main__":
     techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
+        
     #evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
     #evaluator.ambiguity_human_vs_models_correlation()
     #evaluator.scatter_plot_correlation_user_vs_models_entropy()
     #evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
-    evaluator.calculate_JSD_MSE_CORR()
-    evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
-    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+    #evaluator.calculate_JSD_MSE_CORR()
+    #evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+    #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
 
-    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel()
-    evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC() # this could be merged with the other ROC plotting ... 
-
+    #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel()
+    #evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC() # this could be merged with the other ROC plotting ... 
     
+    
+    # model and technique provide the same human annotator entroy, therefore just go over a random model and technique, also the runs
+    # we load the test dataset, and plot the histogram of the entropy agreement
+    model = models[0]      
+    technique = techniques[0] 
+    for dataset in datasets:
+        for run in range(1, 2):
+            workload_name = f"{model}_{dataset}_{technique}_{run}"
+            evaluator.plot_histrogram("entropy_agreement",
+                workload_name,
+                f"Histogram of {dataset}", 
+                "Entropy Annotator Agreement", 
+                "Frequency", 
+                bins=15,
+                show=False,
+                save=True)

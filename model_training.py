@@ -78,7 +78,7 @@ def main():
     #    'bert-base'
     #]
     model_names = [
-        #'google-bert/bert-base-uncased', # done
+        # 'google-bert/bert-base-uncased', # done
         'FacebookAI/roberta-base',
         'xlnet/xlnet-base-cased'
     ]
