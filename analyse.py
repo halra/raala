@@ -88,6 +88,7 @@ class WorkloadEvaluator:
             'MC Dropout': 'MCD',
             'Deep Ensemble': 'DE',
             "Label Smoothing": "LS",
+            'Upper Bound': 'Oracle',
         }
 
     ## Helper Functions
@@ -727,16 +728,13 @@ class WorkloadEvaluator:
     def generate_jsd_corr_mse_table(self, data):
         from collections import OrderedDict
 
-        desired_order = ['baseline', 'mc', 'smoothing', 'de', 'oracle']
-        
-
         aggregated = {}  # key: (dataset, technique) -> dict with aggregated values.
         counts = {}
         for entry in data:
             ds = entry['dataset']
             tech = entry['technique']
             tbl = entry['table'] 
-            jsd_mean  = tbl.loc['mean', 'JSD'] # this is actually better thank using the idx
+            jsd_mean  = tbl.loc['mean', 'JSD'] # this is actually better than using the idx
             jsd_std   = tbl.loc['std',  'JSD']
             corr_mean = tbl.loc['mean', 'Correlation']
             corr_std  = tbl.loc['std',  'Correlation']
@@ -768,8 +766,9 @@ class WorkloadEvaluator:
 
         table_rows = []
         all_datasets = sorted({entry['dataset'] for entry in data})
+        all_techniques = sorted({entry['technique'] for entry in data})
         for ds in all_datasets:
-            for tech in desired_order:
+            for tech in all_techniques:
                 if tech == None:
                     row = {
                         'Dataset': self.mapping_helper.get(ds, ds),
@@ -836,7 +835,7 @@ class WorkloadEvaluator:
         return "\n".join(latex_lines)
 
 
-    def proof_of_concept_ambiguity_sample_detection(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60):
+    def proof_of_concept_ambiguity_sample_detection(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60, text_scale = 1.0):
         summary_data = [] # TODO this shold be recreated on each model run, now it accumulates the tables ... 
         roc_data = {}
         print("Running proof of concept ambiguity detection")
@@ -1019,10 +1018,10 @@ class WorkloadEvaluator:
                     else:
                         plt.plot(fpr, tpr, label=f"{tech.capitalize()} (AUC = {auc:.2f})")
     
-                plt.xlabel('False Positive Rate', fontsize=14)
-                plt.ylabel('True Positive Rate', fontsize=14)
-                plt.title('ROC Curves for Mean Runs of Each Technique', fontsize=16)
-                plt.legend(fontsize=12)
+                plt.xlabel('False Positive Rate', fontsize=14 * text_scale)
+                plt.ylabel('True Positive Rate', fontsize=14 * text_scale)
+                plt.title('ROC Curves for Mean Runs of Each Technique', fontsize=16 * text_scale)
+                plt.legend(fontsize=12 * text_scale)
                 plt.grid(True, ls="--", linewidth=0.5)
                 plt.tight_layout()
                 #plt.show()
@@ -1180,7 +1179,7 @@ class WorkloadEvaluator:
 
 
 
-    def prove_of_concept_ambiguity_sample_detection_combined_ROC(self):
+    def prove_of_concept_ambiguity_sample_detection_combined_ROC(self, text_scale=1.0):
 
 
         summary_data = []
@@ -1190,12 +1189,14 @@ class WorkloadEvaluator:
         for model in self.models:
             for ds in self.datasets:
                 plt.figure(figsize=(20, 20))  
-                grid_size = 2  
+                #grid_size = 2 
+
+                grid_size = math.ceil(math.sqrt(len(techniques)))
                 subplot_idx = 1  
                 
                 for tech in techniques:
                     plt.subplot(grid_size, grid_size, subplot_idx)
-                    plt.title(f"{self.mapping_helper[tech]} Technique", fontsize=16)
+                    plt.title(f"{self.mapping_helper[tech]} Technique", fontsize=16 * text_scale)
                     
                     predictors_accumulate = {
                         'entropy_mean_prediction': [],
@@ -1270,15 +1271,15 @@ class WorkloadEvaluator:
                     
                     plt.xlim([0.0, 1.0])
                     plt.ylim([0.0, 1.05])
-                    plt.xlabel('False Positive Rate', fontsize=12)
-                    plt.ylabel('True Positive Rate', fontsize=12)
-                    plt.legend(loc='lower right', fontsize=8)
-                    plt.grid(True, linestyle='--', linewidth=0.5)
+                    plt.xlabel('False Positive Rate', fontsize=12 * text_scale)
+                    plt.ylabel('True Positive Rate', fontsize=12 * text_scale)
+                    plt.legend(loc='lower right', fontsize=8 * text_scale)
+                    plt.grid(True, linestyle='--', linewidth=0.5 * text_scale)
                     
                     subplot_idx += 1
                 
                 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-                plt.suptitle(f'ROC Curves for Techniques on {self.mapping_helper[ds]} Dataset', fontsize=20)
+                plt.suptitle(f'ROC Curves for Techniques on {self.mapping_helper[ds]} Dataset', fontsize=20 * text_scale)
                 
                 model_path_fix = current_evaluation.replace("/", "-")
                 plt.savefig(os.path.join(self.plot_dir, f'combined_ROC_{model_path_fix}.png'))
@@ -1320,10 +1321,12 @@ class WorkloadEvaluator:
     def plot_histrogram(self, column, workload_name, title, xlabel, ylabel, bins=10,show=True, save=False):
         # TODO put this into the plotting Class
         base_path = os.path.join(os.getcwd(), "saved_results", workload_name)
-        df_path = os.path.join(base_path, "test.csv")
+        df_path = os.path.join(base_path, "test.csv") # this could be a parameter
         if not os.path.exists(df_path):
             raise FileNotFoundError(f"The DataFrame file {df_path} does not exist.")
         df = pd.read_csv(df_path)
+        # Debug:
+        print(f"DEBUG plot_histrogram for df: {workload_name} with column: {column} -> Min: {df['entropy_agreement'].min()}, Mean: {df['entropy_agreement'].mean()}, Max: {df['entropy_agreement'].max()}")
         plt.hist(df[column], bins=bins,  edgecolor='black')
         plt.title(title)
         plt.xlabel(xlabel)
@@ -1343,7 +1346,7 @@ if __name__ == "__main__":
     datasets = ['go_emotions', "rt", "hate_gap"] # Datasets to use in the batch
     #techniques = ["baseline", "mc", "smoothing", "de", "random"] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     
-    techniques = ['mc','baseline', "smoothing", "de" ] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
+    techniques = ['mc','baseline', "smoothing", "de", 'ub' ] # Techniques to use, tho only Baseline, MC Dropout, Label Smoothing and deep ensamble is currently implemented
     num_runs = 3  # Number of runs per technique, the models have to be trained and exists in the saved_results folder
     enable_plotting = True  # Set to False to disable plotting # TODO impl plotting and verbose output.
 
@@ -1354,20 +1357,21 @@ if __name__ == "__main__":
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
         
-    #evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
-    #evaluator.ambiguity_human_vs_models_correlation()
-    #evaluator.scatter_plot_correlation_user_vs_models_entropy()
-    #evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
-    #evaluator.calculate_JSD_MSE_CORR()
-    #evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
-    #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+    evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
+    evaluator.ambiguity_human_vs_models_correlation()
+    evaluator.scatter_plot_correlation_user_vs_models_entropy()
+    evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
+    evaluator.calculate_JSD_MSE_CORR()
+    evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60, text_scale=1.0)
+    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
 
-    #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel()
-    #evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC() # this could be merged with the other ROC plotting ... 
+    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel()
+    evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC(text_scale=1.5) # this could be merged with the other ROC plotting ... 
     
     
     # model and technique provide the same human annotator entroy, therefore just go over a random model and technique, also the runs
     # we load the test dataset, and plot the histogram of the entropy agreement
+    # TODO Richard, put this method in the appropriate class .... 
     model = models[0]      
     technique = techniques[0] 
     for dataset in datasets:

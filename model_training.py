@@ -78,11 +78,11 @@ def main():
     #    'bert-base'
     #]
     model_names = [
-        # 'google-bert/bert-base-uncased', # done
-        'FacebookAI/roberta-base',
-        'xlnet/xlnet-base-cased'
+         'google-bert/bert-base-uncased', # 
+         'FacebookAI/roberta-base', # 
+         'xlnet/xlnet-base-cased' # 
     ]
-    dataset_name = 'go_emotions' 
+    dataset_name = 'hate_gap' # go_emotions done
     
     # TODO consider making a struct for the train_and_evaluate_models function
     # TODO check that len of techniques is equal to len of seeds and epochs
@@ -90,7 +90,7 @@ def main():
     techniques = ['ub', 'ub','ub']
 
     seeds_list = [
-        [42], [13], [815], #baseline
+        [42], [131], [8115], #baseline
     ]
     epochs_list = [
         [10], [10], [10], #baseline
