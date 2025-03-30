@@ -81,7 +81,7 @@ class WorkloadEvaluator:
             'de': 'Deep Ensemble',
             'random': 'Random Baseline',
             'prajjwal1/bert-small' :'prajjwal1-bert-small',
-            'ub': 'Upper Bound',
+            'ub': 'Oracle',
             'entropy_agreement': 'Label Ambiguity Score',
             'entropy_mean_prediction': 'Model Uncertainty Score',
             'Baseline': 'Baseli.',
@@ -90,6 +90,8 @@ class WorkloadEvaluator:
             "Label Smoothing": "LS",
             'Upper Bound': 'Oracle',
         }
+        
+        
 
     ## Helper Functions
 
@@ -1055,17 +1057,19 @@ class WorkloadEvaluator:
             agg_error.columns = ['Technique', 'Dataset', 'Mean Error Rate', 'STD Error Rate']
             error_pivot = agg_error.pivot(index='Technique', columns='Dataset', values=['Mean Error Rate', 'STD Error Rate'])
 
-            dataset_order = ['rt', 'go_emotions', 'hate_gap'] # TODO make this dynamic just parse the models ... 
-
-            display_names = {
-                'rt': "RT (\%)",
-                'go_emotions': "GoEmotions (\%)",
-                'hate_gap': "GAB Hate (\%)"
+            #dataset_order = ['rt', 'go_emotions', 'hate_gap'] # TODO make this dynamic just parse the models ... 
+            
+            # TODO DEBUG use mapping helper function, tho they would override other mappings ... 
+            display_names = { 
+                'rt': "\\textbf{RT (\%)}",
+                'go_emotions': "\\textbf{GoEmotions (\%)}",
+                'hate_gap': "\\textbf{GAB Hate (\%)}"
             }
+            technique_column_name = "\\textbf{Technique}"
             final_data = {}
             for tech in error_pivot.index:
                 row = {}
-                for ds in dataset_order:
+                for ds in self.datasets:
                     try:
                         mean_val = error_pivot.loc[tech, ('Mean Error Rate', ds)]
                         std_val = error_pivot.loc[tech, ('STD Error Rate', ds)]
@@ -1074,20 +1078,25 @@ class WorkloadEvaluator:
                         row[display_names[ds]] = ""
                 final_data[tech] = row
             aggregated_error_df = pd.DataFrame.from_dict(final_data, orient='index')
-            aggregated_error_df.index.name = 'Technique'
+            aggregated_error_df.index.name = technique_column_name
             aggregated_error_df.reset_index(inplace=True)
             
-            # TODO DEBUG use mapping helper function
+            # TODO DEBUG use mapping helper function tho they would override other mappings .... 
             technique_rename = {
                 'baseline': "B (Baseline)",
                 'mc': "MCD",
                 'smoothing': "LS",
                 'de': "DE",
-                'random': "Random Chance"
+                'random': "Random Chance",
+                'ub': "Oracle",
+                'Upper Bound': "Oracle"
             }
-            aggregated_error_df['Technique'] = aggregated_error_df['Technique'].map(technique_rename).fillna(aggregated_error_df['Technique'])
+            aggregated_error_df[technique_column_name] = aggregated_error_df[technique_column_name].map(technique_rename).fillna(aggregated_error_df[technique_column_name])
+            #aggregated_error_df = self.bold_extreme_values(aggregated_error_df, value_cols=["RT (%)", "GoEmotions (%)", "GAB Hate (%)"], extreme='min')
+            aggregated_error_df = self.bold_extreme_values(aggregated_error_df, extreme='min')
+
             
-            
+            # TODO is there a way to add \centered and \small !?
             error_table_latex = aggregated_error_df.to_latex(
                 index=False,
                 escape=False,
@@ -1095,14 +1104,56 @@ class WorkloadEvaluator:
                 caption=("Error Rates for Ambiguity Detection (Averaged over Models). "
                         "\textbf{Note: REPLACE ME !} consistently achieves the lowest error rates, with the most pronounced improvement on the \textbf{Note: REPLACE ME !} dataset."),
                 label="table:aggregated_error_rate",
-                column_format="l" + 'c' * len(self.datasets), # TODO generate the columns dynamicly
-                bold_rows=False
+                column_format=f"l{'c'*len(self.datasets)}",  # dynamically creates "lccc" if len(self.datasets)==3
+                bold_rows=False,
+                float_format="{:.2f}".format # auto format to 2 decimal
             )
             
             error_latex_path = os.path.join(self.latex_dir, "aggregated_error_rate.tex")
             with open(error_latex_path, 'w') as f:
                 f.write(error_table_latex)
             logger.info(f"Aggregated error rate LaTeX table saved to {error_latex_path}")
+
+
+    # TODO write documentation for this function. Also use it on the other LateX tables ... 
+    def bold_extreme_values(self, df, value_cols=None, extreme='min', bold_func=None):
+
+        if value_cols is None:
+            value_cols = df.columns.tolist()
+            
+        if bold_func is None:
+            bold_func = lambda cell, val: f"\\textbf{{{cell}}}"
+        
+        def get_numeric(cell):
+            try:
+                if not isinstance(cell, str):
+                    return float(cell)
+                return float(cell.split(" $\\pm$ ")[0])
+            except Exception:
+                try:
+                    return float(cell)
+                except Exception:
+                    return None
+
+        for col in value_cols:
+            numeric_vals = [get_numeric(cell) for cell in df[col] if get_numeric(cell) is not None]
+            if not numeric_vals:
+                continue
+
+            if extreme == 'min':
+                extreme_val = min(numeric_vals)
+            elif extreme == 'max':
+                extreme_val = max(numeric_vals)
+            else:
+                raise ValueError("Parameter 'extreme' must be 'min' or 'max'.")
+
+            df[col] = df[col].apply(
+                lambda cell: bold_func(cell, extreme_val) 
+                if (get_numeric(cell) is not None and np.isclose(get_numeric(cell), extreme_val, atol=1e-6))
+                else cell
+            )
+        return df
+
 
 
 
