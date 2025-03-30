@@ -835,9 +835,18 @@ class WorkloadEvaluator:
         return "\n".join(latex_lines)
 
 
-    def proof_of_concept_ambiguity_sample_detection(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60, text_scale = 1.0):
+    def proof_of_concept_ambiguity_sample_detection(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60,use_random_evaluation = False, text_scale = 1.0):
         summary_data = [] # TODO this shold be recreated on each model run, now it accumulates the tables ... 
         roc_data = {}
+        
+        if use_random_evaluation:
+            print("Appending random evaluation")
+            techniques = self.techniques + ['random'] # dont change the class variable
+        else:
+            print("Not appending random evaluation")
+            techniques = self.techniques
+        print("DEBUG class self.techniques:", self.techniques)
+        
         print("Running proof of concept ambiguity detection")
         for model in self.models:
             for ds in self.datasets:
@@ -933,6 +942,8 @@ class WorkloadEvaluator:
                     mean_predictors = predictors / 3
 
                     summary_data.append({
+                        'Model': model,
+                        'Dataset': ds,
                         'Technique': tech,
                         'Mean Lowest Error Rate': mean_error_rate,
                         'STD Lowest Error Rate': std_error_rate,
@@ -985,6 +996,9 @@ class WorkloadEvaluator:
                     model_path_fix = current_evaluation.replace("/", "-")
 
                 summary_df = pd.DataFrame(summary_data)
+                
+                #print(summary_df)
+                
                 #print("=== Summary Table ===\n")
                 #print(summary_df.to_string(index=False))
                 latex_table = summary_df.to_latex(
@@ -1029,6 +1043,67 @@ class WorkloadEvaluator:
                 plt.savefig(os.path.join(self.plot_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detections_{model_path_fix}.png'))
                 plt.close()
                 print(f"\nCombined ROC curves saved to '{self.plot_dir}'.")
+        print("Finished proof of concept ambiguity sample detection")
+        
+        
+        # average over models TODO consider putting this in a new method ... 
+        if not summary_df.empty:
+            agg_error = summary_df.groupby(['Technique', 'Dataset'], as_index=False).agg({
+                'Mean Lowest Error Rate': ['mean', 'std']
+            })
+
+            agg_error.columns = ['Technique', 'Dataset', 'Mean Error Rate', 'STD Error Rate']
+            error_pivot = agg_error.pivot(index='Technique', columns='Dataset', values=['Mean Error Rate', 'STD Error Rate'])
+
+            dataset_order = ['rt', 'go_emotions', 'hate_gap'] # TODO make this dynamic just parse the models ... 
+
+            display_names = {
+                'rt': "RT (\%)",
+                'go_emotions': "GoEmotions (\%)",
+                'hate_gap': "GAB Hate (\%)"
+            }
+            final_data = {}
+            for tech in error_pivot.index:
+                row = {}
+                for ds in dataset_order:
+                    try:
+                        mean_val = error_pivot.loc[tech, ('Mean Error Rate', ds)]
+                        std_val = error_pivot.loc[tech, ('STD Error Rate', ds)]
+                        row[display_names[ds]] = f"{mean_val:.2f} $\\pm$ {std_val:.3f}"
+                    except KeyError:
+                        row[display_names[ds]] = ""
+                final_data[tech] = row
+            aggregated_error_df = pd.DataFrame.from_dict(final_data, orient='index')
+            aggregated_error_df.index.name = 'Technique'
+            aggregated_error_df.reset_index(inplace=True)
+            
+            # TODO DEBUG use mapping helper function
+            technique_rename = {
+                'baseline': "B (Baseline)",
+                'mc': "MCD",
+                'smoothing': "LS",
+                'de': "DE",
+                'random': "Random Chance"
+            }
+            aggregated_error_df['Technique'] = aggregated_error_df['Technique'].map(technique_rename).fillna(aggregated_error_df['Technique'])
+            
+            
+            error_table_latex = aggregated_error_df.to_latex(
+                index=False,
+                escape=False,
+                # TODO this is just the copied text, add a placeholder or even generate the results .... 
+                caption=("Error Rates for Ambiguity Detection (Averaged over Models). "
+                        "\textbf{Note: REPLACE ME !} consistently achieves the lowest error rates, with the most pronounced improvement on the \textbf{Note: REPLACE ME !} dataset."),
+                label="table:aggregated_error_rate",
+                column_format="l" + 'c' * len(self.datasets), # TODO generate the columns dynamicly
+                bold_rows=False
+            )
+            
+            error_latex_path = os.path.join(self.latex_dir, "aggregated_error_rate.tex")
+            with open(error_latex_path, 'w') as f:
+                f.write(error_table_latex)
+            logger.info(f"Aggregated error rate LaTeX table saved to {error_latex_path}")
+
 
 
     def proof_of_concept_ambiguity_sample_detection_latex_tabel(self, threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60):
@@ -1162,9 +1237,9 @@ class WorkloadEvaluator:
         results_df = results_df[['Technique', 'Dataset', 'Model', 'Mean Error Rate',
                                 'Mean Precision', 'Mean Recall', 'Mean F1 Score']]
 
- 
 
-
+        #print(results_df)
+        
         latex_table = results_df.to_latex(index=False, caption='Performance Metrics for Ambiguity Detection Techniques', label='table:case_study_results')
         #print(latex_table)
         latex_path = os.path.join(self.latex_dir, f'proof_of_concept_{threshold_range_start}_{threshold_range_end}_{threshold_agreement_start}_{threshold_agreement_end}_ambiguity_sample_detection_latex_tabel_formatted.tex')
@@ -1357,16 +1432,16 @@ if __name__ == "__main__":
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
         
-    evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
-    evaluator.ambiguity_human_vs_models_correlation()
-    evaluator.scatter_plot_correlation_user_vs_models_entropy()
-    evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
-    evaluator.calculate_JSD_MSE_CORR()
-    evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60, text_scale=1.0)
-    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+    #evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
+    #evaluator.ambiguity_human_vs_models_correlation()
+    #evaluator.scatter_plot_correlation_user_vs_models_entropy()
+    #evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
+    #evaluator.calculate_JSD_MSE_CORR()
+    evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60, text_scale=1.0, use_random_evaluation = True)
+    #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
 
-    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel()
-    evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC(text_scale=1.5) # this could be merged with the other ROC plotting ... 
+    #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel() # this is called twice, so keep it out of the main function ...
+    #evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC(text_scale=1.5) # this could be merged with the other ROC plotting ... 
     
     
     # model and technique provide the same human annotator entroy, therefore just go over a random model and technique, also the runs
