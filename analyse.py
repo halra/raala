@@ -89,6 +89,7 @@ class WorkloadEvaluator:
             'Deep Ensemble': 'DE',
             "Label Smoothing": "LS",
             'Upper Bound': 'Oracle',
+            'Oracle': 'Oracle', #  Oracle Fine-Tuning
         }
         
         
@@ -413,6 +414,25 @@ class WorkloadEvaluator:
             f.write(md_table_prepared.to_markdown())
         logger.info(f"Markdown table saved to {md_path}")
         
+        
+        
+        #print(latex_table_prepared)
+        all_dfs = []
+        # The values are in a column mixed by model and dataset, therefore we have to seperate them by dataset and model, to find the max values to mark
+        # also we only want to bold 'Mean Correlation', 'Imp. over Baseline', here we can use the parameter value_cols
+        for model in self.models:
+            for dataset in self.datasets:
+                df_filtered = latex_table_prepared[
+                    (latex_table_prepared['Model'] == self.mapping_helper[model]) & (latex_table_prepared['Dataset'] == self.mapping_helper[dataset])
+                ].copy()
+                if not df_filtered.empty:
+                    df_filtered = self.bold_extreme_values(df_filtered, extreme='max', value_cols=['Mean Correlation', 'Imp. over Baseline'])
+                    all_dfs.append(df_filtered)
+        latex_table_prepared = pd.concat(all_dfs, ignore_index=True)
+        #print(latex_table_prepared)
+        
+        
+        
         improved_human_vs_model_latex = self.generate_latex_multiro_table(
             latex_table_prepared,
             caption=('Mean correlation coefficients for all models (mean $\pm$ std) and percentage improvement over baseline. '
@@ -691,12 +711,15 @@ class WorkloadEvaluator:
                         table: {columns and rows}
                     }
                     """
+                    print("summary_stats", summary_stats)   
+                    summary_stats = self.bold_extreme_values(summary_stats, extreme='max')
                     latex_table_helper_list.append({
                         "dataset": ds,  
                         "technique": tech,
                         "model": model,
                         "table": summary_stats
                     })
+                    print("summary_stats", summary_stats)
                     
                     #LaTeX table
                     latex_table = summary_stats.to_latex(
@@ -1093,8 +1116,9 @@ class WorkloadEvaluator:
             }
             aggregated_error_df[technique_column_name] = aggregated_error_df[technique_column_name].map(technique_rename).fillna(aggregated_error_df[technique_column_name])
             #aggregated_error_df = self.bold_extreme_values(aggregated_error_df, value_cols=["RT (%)", "GoEmotions (%)", "GAB Hate (%)"], extreme='min')
+            #print(aggregated_error_df)
             aggregated_error_df = self.bold_extreme_values(aggregated_error_df, extreme='min')
-
+            #print(aggregated_error_df)
             
             # TODO is there a way to add \centered and \small !?
             error_table_latex = aggregated_error_df.to_latex(
@@ -1102,7 +1126,7 @@ class WorkloadEvaluator:
                 escape=False,
                 # TODO this is just the copied text, add a placeholder or even generate the results .... 
                 caption=("Error Rates for Ambiguity Detection (Averaged over Models). "
-                        "\textbf{Note: REPLACE ME !} consistently achieves the lowest error rates, with the most pronounced improvement on the \textbf{Note: REPLACE ME !} dataset."),
+                        "\\textbf{Note: REPLACE ME !} consistently achieves the lowest error rates, with the most pronounced improvement on the \\textbf{Note: REPLACE ME !} dataset."),
                 label="table:aggregated_error_rate",
                 column_format=f"l{'c'*len(self.datasets)}",  # dynamically creates "lccc" if len(self.datasets)==3
                 bold_rows=False,
@@ -1117,7 +1141,7 @@ class WorkloadEvaluator:
 
     # TODO write documentation for this function. Also use it on the other LateX tables ... 
     def bold_extreme_values(self, df, value_cols=None, extreme='min', bold_func=None):
-
+        import re
         if value_cols is None:
             value_cols = df.columns.tolist()
             
@@ -1127,12 +1151,21 @@ class WorkloadEvaluator:
         def get_numeric(cell):
             try:
                 if not isinstance(cell, str):
+                    #print(f"´Cell is alead in float: {cell}")
                     return float(cell)
-                return float(cell.split(" $\\pm$ ")[0])
+                #print(f"Cell is string: {cell}")
+                if "$\\pm$" in cell:
+                    num = float(cell.split(" $\\pm$ ")[0]) # TODO if contains a $\\pm$ we need to split it ...  
+                else:
+                    num = cell
+                cleaned = re.sub(r"[^\d\.\-+]", "", num)
+                #print(f"Cleaned: {num} -> {cleaned}")
+                return float(cleaned)
             except Exception:
                 try:
                     return float(cell)
                 except Exception:
+                    print(f"Failed to convert cell to float: {cell}")
                     return None
 
         for col in value_cols:
@@ -1146,7 +1179,7 @@ class WorkloadEvaluator:
                 extreme_val = max(numeric_vals)
             else:
                 raise ValueError("Parameter 'extreme' must be 'min' or 'max'.")
-
+            # this is safe, as long as the func only wraps in \textbf{}
             df[col] = df[col].apply(
                 lambda cell: bold_func(cell, extreme_val) 
                 if (get_numeric(cell) is not None and np.isclose(get_numeric(cell), extreme_val, atol=1e-6))
@@ -1483,16 +1516,16 @@ if __name__ == "__main__":
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
         
-    #evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
-    #evaluator.ambiguity_human_vs_models_correlation()
-    #evaluator.scatter_plot_correlation_user_vs_models_entropy()
-    #evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
-    #evaluator.calculate_JSD_MSE_CORR()
+    evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
+    evaluator.ambiguity_human_vs_models_correlation()
+    evaluator.scatter_plot_correlation_user_vs_models_entropy()
+    evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
+    evaluator.calculate_JSD_MSE_CORR()
     evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60, text_scale=1.0, use_random_evaluation = True)
-    #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
+    evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
 
     #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel() # this is called twice, so keep it out of the main function ...
-    #evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC(text_scale=1.5) # this could be merged with the other ROC plotting ... 
+    evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC(text_scale=1.5) # this could be merged with the other ROC plotting ... 
     
     
     # model and technique provide the same human annotator entroy, therefore just go over a random model and technique, also the runs
