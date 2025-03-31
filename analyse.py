@@ -307,6 +307,8 @@ class WorkloadEvaluator:
                     model_cell = "\\multirow{" + str(nrows) + "}{*}{" + latex_escape(row["Model"]) + "}"
                 else:
                     model_cell = ""
+                if row['Method'] == 'Oracle':
+                    body += " \cmidrule{2-9}"
                 row_cells = [model_cell, latex_escape(row["Method"])]
                 for ds in datasets:
                     row_cells.append(latex_escape(row[f"{ds} Corr."]))
@@ -712,7 +714,7 @@ class WorkloadEvaluator:
                     }
                     """
                     print("summary_stats", summary_stats)   
-                    summary_stats = self.bold_extreme_values(summary_stats, extreme='max')
+                    #summary_stats = self.bold_extreme_values(summary_stats, extreme='max')
                     latex_table_helper_list.append({
                         "dataset": ds,  
                         "technique": tech,
@@ -842,6 +844,8 @@ class WorkloadEvaluator:
             rows = grouped_rows[ds]
             n_rows = len(rows)
             for j, row in enumerate(rows):
+                if row['Technique'] == 'Oracle':
+                    latex_lines.append(" \\cmidrule{2-5}")
                 if j == 0:
                     latex_lines.append(f"    \\multirow{{{n_rows}}}{{*}}{{{row['Dataset']}}} & {row['Technique']} & {row['Mean JSD']} & {row['Mean Correlation']} & {row['Mean MSE']} \\\\")
                 else:
@@ -1167,9 +1171,11 @@ class WorkloadEvaluator:
                 except Exception:
                     print(f"Failed to convert cell to float: {cell}")
                     return None
-
+        #print(df)
+        df_methods = df.loc[df['Technique'] != 'Oracle', :]
+        
         for col in value_cols:
-            numeric_vals = [get_numeric(cell) for cell in df[col] if get_numeric(cell) is not None]
+            numeric_vals = [get_numeric(cell) for cell in df_methods[col] if get_numeric(cell) is not None]
             if not numeric_vals:
                 continue
 
@@ -1485,11 +1491,13 @@ class WorkloadEvaluator:
             raise FileNotFoundError(f"The DataFrame file {df_path} does not exist.")
         df = pd.read_csv(df_path)
         # Debug:
+        plt.figure(figsize = (8,3.3))
         print(f"DEBUG plot_histrogram for df: {workload_name} with column: {column} -> Min: {df['entropy_agreement'].min()}, Mean: {df['entropy_agreement'].mean()}, Max: {df['entropy_agreement'].max()}")
         plt.hist(df[column], bins=bins,  edgecolor='black')
-        plt.title(title)
+        #plt.title(title)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
+        plt.xlim((0,1.6))
         if save:
             save_path = os.path.join(os.getcwd(),'analysis_results', 'plots', f"histogram_{workload_name}_{column}.png")
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
