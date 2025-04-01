@@ -74,7 +74,7 @@ class WorkloadEvaluator:
             'xlnet': 'XLNet',
             'rt': 'Rotten Tomatoes',
             'go_emotions': 'GoEmotions',
-            'hate_gap': 'GAB Hate Corpus',
+            'hate_gap': 'GAB Hate Speech',
             'baseline': 'Baseline',
             'mc': 'MC Dropout',
             'smoothing': 'Label Smoothing',
@@ -241,7 +241,8 @@ class WorkloadEvaluator:
             text = text.replace("±", "$\\pm$")
             return text
 
-        datasets = sorted(long_table["Dataset"].unique())
+        
+        datasets = long_table["Dataset"].unique()
         pivoted_rows = []
         for (model, technique), group in long_table.groupby(["Model", "Technique"]):
             technique = self.mapping_helper[technique] # shorten the technique name
@@ -251,7 +252,14 @@ class WorkloadEvaluator:
                 sub = group[group["Dataset"] == ds]
                 if not sub.empty:
                     data = sub.iloc[0]
-                    combined_corr = f"{data['Mean Correlation']} $\\pm$ {data['Std Dev %']}"
+                    mean_value = data['Mean Correlation']
+                    if isinstance(mean_value, str):
+                        # it's only string when \\textbf is added
+                        combined_corr = f"{data['Mean Correlation']} $\\pm$ {data['Std Dev %']:.3f}"
+                    else:
+                        # fix, make sure all have the same number of decimal places when printed out
+                        combined_corr = f"{data['Mean Correlation']:.3f} $\\pm$ {data['Std Dev %']:.3f}"
+                        
                     row[f"{ds} Corr."] = combined_corr
                     row[f"{ds} % Improv."] = data["Imp. over Baseline"]
                     try:
@@ -792,8 +800,8 @@ class WorkloadEvaluator:
             aggregated[key]['MSE_std']    /= counts[key]
 
         table_rows = []
-        all_datasets = sorted({entry['dataset'] for entry in data})
-        all_techniques = sorted({entry['technique'] for entry in data})
+        all_datasets = [entry['dataset'] for entry in data]
+        all_techniques = [entry['technique'] for entry in data]
         for ds in all_datasets:
             for tech in all_techniques:
                 if tech == None:
@@ -836,7 +844,7 @@ class WorkloadEvaluator:
         latex_lines.append("")
         latex_lines.append("    \\begin{tabular}{llccc}")
         latex_lines.append("    \\toprule")
-        latex_lines.append("    \\textbf{Dataset} & \\textbf{Technique} & \\textbf{Mean JSD} & \\textbf{Mean Correlation} & \\textbf{Mean MSE} \\\\")
+        latex_lines.append("    \\textbf{Dataset} & \\textbf{Technique} & \\textbf{Mean JSD \\downarrow}  & \\textbf{Mean Correlation \\uparrow} & \\textbf{Mean MSE \\downarrow} \\\\")
         latex_lines.append("    \\midrule")
         
         dataset_keys = list(grouped_rows.keys())
