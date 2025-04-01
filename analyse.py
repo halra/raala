@@ -800,8 +800,9 @@ class WorkloadEvaluator:
             aggregated[key]['MSE_std']    /= counts[key]
 
         table_rows = []
-        all_datasets = [entry['dataset'] for entry in data]
-        all_techniques = [entry['technique'] for entry in data]
+        all_datasets = self.datasets #sorted({entry['dataset'] for entry in data})
+        all_techniques = self.techniques # sorted({entry['technique'] for entry in data})
+
         for ds in all_datasets:
             for tech in all_techniques:
                 if tech == None:
@@ -844,7 +845,7 @@ class WorkloadEvaluator:
         latex_lines.append("")
         latex_lines.append("    \\begin{tabular}{llccc}")
         latex_lines.append("    \\toprule")
-        latex_lines.append("    \\textbf{Dataset} & \\textbf{Technique} & \\textbf{Mean JSD \\downarrow}  & \\textbf{Mean Correlation \\uparrow} & \\textbf{Mean MSE \\downarrow} \\\\")
+        latex_lines.append("    \\textbf{Dataset} & \\textbf{Technique} & \\textbf{Mean JSD $\\downarrow$}  & \\textbf{Mean Correlation $\\uparrow$} & \\textbf{Mean MSE $\\downarrow$} \\\\")
         latex_lines.append("    \\midrule")
         
         dataset_keys = list(grouped_rows.keys())
@@ -862,7 +863,7 @@ class WorkloadEvaluator:
                 latex_lines.append("    \\midrule")
         latex_lines.append("    \\bottomrule")
         latex_lines.append("    \\end{tabular}")
-        models_used = sorted({entry['model'] for entry in data})
+        models_used = sorted({self.mapping_helper[entry['model']] for entry in data})
         models_str = ", ".join(models_used)
         latex_lines.append(f"        \\caption{{Aggregated Mean Results (averaged over {models_str})}}")
         latex_lines.append("    \\label{table:results_jsd_correlation_mse}")
@@ -1527,8 +1528,8 @@ if __name__ == "__main__":
 
 
 
-    # this fixes a bug, baseline must be the first technique since it provides the pivot value ....
-    techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
+    # the baseline has to be listed first, but we don't want to sort the others. they should always be in a pre-defined order: baseline, de, mcd, ls, oracle    
+    #techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
         
