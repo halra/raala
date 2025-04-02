@@ -1,6 +1,8 @@
 import os
 import logging
 from typing import List, Dict
+import zipfile
+import time
 
 import pandas as pd
 import numpy as np
@@ -1556,6 +1558,7 @@ class WorkloadEvaluator:
         plt.close()
 
 if __name__ == "__main__":
+    start_time = time.time()
     
     models = ["roberta", "bert", "xlnet"] # Models to use in the batch
     datasets = ['go_emotions', "rt", "hate_gap"] # Datasets to use in the batch
@@ -1616,3 +1619,38 @@ if __name__ == "__main__":
                 bins=15,
                 show=False,
                 save=True)
+            
+    # some extra info, runtime takes ages so lets measure it
+    elapsed = time.time() - start_time
+    hours, rest = divmod(elapsed, 3600)
+    minutes, seconds = divmod(rest, 60)
+    print(f"Total execution time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds")
+
+    base_analysis = os.path.join(os.getcwd(), "analysis_results")
+    latex_dir = os.path.join(base_analysis, "latex")
+    markdown_dir = os.path.join(base_analysis, "markdown")
+    plots_dir = os.path.join(base_analysis, "plots")
+
+    def count_files(directory):
+        count = 0
+        for root, _, files in os.walk(directory):
+            count += len(files)
+        return count
+
+    latex_files = count_files(latex_dir)
+    markdown_files = count_files(markdown_dir)
+    plots_files = count_files(plots_dir)
+
+    print(f"Files in {latex_dir}: {latex_files}")
+    print(f"Files in {markdown_dir}: {markdown_files}")
+    print(f"Files in {plots_dir}: {plots_files}")
+
+    # automake zipfile, this is a bit hacky
+    zip_filename = os.path.join(os.getcwd(), "analysis_results.zip")
+    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, _, files in os.walk(base_analysis):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, base_analysis)
+                zipf.write(file_path, arcname)
+    print(f"analysis_results folder has been zipped into {zip_filename}")
