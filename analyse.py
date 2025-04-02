@@ -563,7 +563,7 @@ class WorkloadEvaluator:
                     # Format correlation text
                     corr_text = '\n'.join([f"{model}: {corr:.4f}" for model, corr in correlations.items()])
 
-                    ax.set_title(f'Tech: {self.mapping_helper[tech]} - Dataset: {self.mapping_helper[ds]}\nCorrelations:\n{corr_text}')
+                    #ax.set_title(f'Tech: {self.mapping_helper[tech]} - Dataset: {self.mapping_helper[ds]}\nCorrelations:\n{corr_text}')
                     ax.set_xlabel(measure)
                     ax.set_ylabel(target_column)
                     ax.grid(True, linestyle='--', alpha=0.6)
@@ -1028,7 +1028,7 @@ class WorkloadEvaluator:
                     plt.ylim([0.0, 1.05])
                     plt.xlabel('False Positive Rate')
                     plt.ylabel('True Positive Rate')
-                    plt.title(f'ROC Curves for Ambiguity Detection for {current_evaluation}\n')
+                    #plt.title(f'ROC Curves for Ambiguity Detection for {current_evaluation}\n')
                     plt.legend(loc='lower right')
                     #plt.show()
                     model_path_fix = current_evaluation.replace("/", "-")
@@ -1072,7 +1072,7 @@ class WorkloadEvaluator:
     
                 plt.xlabel('False Positive Rate', fontsize=14 * text_scale)
                 plt.ylabel('True Positive Rate', fontsize=14 * text_scale)
-                plt.title('ROC Curves for Mean Runs of Each Technique', fontsize=16 * text_scale)
+                #plt.title('ROC Curves for Mean Runs of Each Technique', fontsize=16 * text_scale)
                 plt.legend(fontsize=12 * text_scale)
                 plt.grid(True, ls="--", linewidth=0.5)
                 plt.tight_layout()
@@ -1367,13 +1367,29 @@ class WorkloadEvaluator:
         for model in self.models:
             for ds in self.datasets:
                 plt.figure(figsize=(20, 20))  
-                #grid_size = 2 
-
-                grid_size = math.ceil(math.sqrt(len(techniques)))
-                subplot_idx = 1  
+                n = len(self.techniques)
+                ncols = 2  #  TODO now it's fixed to 2 columns, make a param to add num of columns
+                if n % 2 != 0:
+                    nrows = math.ceil(n / 2)  # 5 -> 3 rows
+                    custom_order = []
+                    for r in range(nrows - 1):
+                        custom_order.append(r * ncols + 1)
+                    for r in range(nrows - 1):
+                        custom_order.append(r * ncols + 2)
+                    custom_order.append((nrows - 1) * ncols + 1)
+                    print("Custom subplot order:", custom_order)
+                else:
+                    nrows = math.ceil(n / ncols)
+                    custom_order = []
+                    for c in range(ncols):
+                        for r in range(nrows):
+                            custom_order.append(r * ncols + c + 1)
                 
-                for tech in techniques:
-                    plt.subplot(grid_size, grid_size, subplot_idx)
+                for i, tech in enumerate(self.techniques):
+                    # use column major order
+                    subplot_idx = custom_order[i]
+                    plt.subplot(nrows, ncols, subplot_idx)
+                    #subplot_idx += 1  
                     plt.title(f"{self.mapping_helper[tech]} Technique", fontsize=16 * text_scale)
                     
                     predictors_accumulate = {
@@ -1454,10 +1470,10 @@ class WorkloadEvaluator:
                     plt.legend(loc='lower right', fontsize=8 * text_scale)
                     plt.grid(True, linestyle='--', linewidth=0.5 * text_scale)
                     
-                    subplot_idx += 1
+                    #subplot_idx += 1
                 
                 plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-                plt.suptitle(f'ROC Curves for Techniques on {self.mapping_helper[ds]} Dataset', fontsize=20 * text_scale)
+                #plt.suptitle(f'ROC Curves for Techniques on {self.mapping_helper[ds]} Dataset', fontsize=20 * text_scale)
                 
                 model_path_fix = current_evaluation.replace("/", "-")
                 plt.savefig(os.path.join(self.plot_dir, f'combined_ROC_{model_path_fix}.png'))
@@ -1528,9 +1544,10 @@ class WorkloadEvaluator:
         # Debug:
         print(f"DEBUG plot_histrogram for df: {workload_name} with column: {column} -> Min: {df['entropy_agreement'].min()}, Mean: {df['entropy_agreement'].mean()}, Max: {df['entropy_agreement'].max()}")
         plt.hist(df[column], bins=bins,  edgecolor='black')
-        plt.title(title)
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
+        #plt.title(title)
+        plt.figure(figsize = (8,3.3))
+        plt.xlabel(xlabel, fontsize=12)
+        plt.ylabel(ylabel, fontsize=12)
         if save:
             save_path = os.path.join(os.getcwd(),'analysis_results', 'plots', f"histogram_train_ds_{workload_name}_{column}.png")
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
@@ -1586,3 +1603,16 @@ if __name__ == "__main__":
                 show=False,
                 save=True)
 
+    model = models[0]      
+    technique = techniques[0] 
+    for dataset in datasets:
+        for run in range(1, 2):
+            workload_name = f"{model}_{dataset}_{technique}_{run}"
+            evaluator.plot_histrogram_on_train("entropy_agreement", # entropy_all,entropy_tag, entropy_agreement
+                workload_name,
+                f"Histogram of {dataset}", 
+                "Label Ambiguity Score", 
+                "Number of samples", 
+                bins=15,
+                show=False,
+                save=True)
