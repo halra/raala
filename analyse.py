@@ -1528,8 +1528,8 @@ if __name__ == "__main__":
 
 
 
-    # the baseline has to be listed first, but we don't want to sort the others. they should always be in a pre-defined order: baseline, de, mcd, ls, oracle    
-    #techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
+    # revert back to sorting, it will always be: baseine, DE, LS, MCD, Oracle
+    techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
         
