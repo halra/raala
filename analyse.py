@@ -74,7 +74,7 @@ class WorkloadEvaluator:
             'xlnet': 'XLNet',
             'rt': 'Rotten Tomatoes',
             'go_emotions': 'GoEmotions',
-            'hate_gap': 'GAB Hate Corpus',
+            'hate_gap': 'GAB Hate Speech',
             'baseline': 'Baseline',
             'mc': 'MC Dropout',
             'smoothing': 'Label Smoothing',
@@ -241,7 +241,8 @@ class WorkloadEvaluator:
             text = text.replace("±", "$\\pm$")
             return text
 
-        datasets = sorted(long_table["Dataset"].unique())
+        
+        datasets = long_table["Dataset"].unique()
         pivoted_rows = []
         for (model, technique), group in long_table.groupby(["Model", "Technique"]):
             technique = self.mapping_helper[technique] # shorten the technique name
@@ -251,7 +252,14 @@ class WorkloadEvaluator:
                 sub = group[group["Dataset"] == ds]
                 if not sub.empty:
                     data = sub.iloc[0]
-                    combined_corr = f"{data['Mean Correlation']} $\\pm$ {data['Std Dev %']}"
+                    mean_value = data['Mean Correlation']
+                    if isinstance(mean_value, str):
+                        # it's only string when \\textbf is added
+                        combined_corr = f"{data['Mean Correlation']} $\\pm$ {data['Std Dev %']:.3f}"
+                    else:
+                        # fix, make sure all have the same number of decimal places when printed out
+                        combined_corr = f"{data['Mean Correlation']:.3f} $\\pm$ {data['Std Dev %']:.3f}"
+                        
                     row[f"{ds} Corr."] = combined_corr
                     row[f"{ds} % Improv."] = data["Imp. over Baseline"]
                     try:
@@ -307,6 +315,8 @@ class WorkloadEvaluator:
                     model_cell = "\\multirow{" + str(nrows) + "}{*}{" + latex_escape(row["Model"]) + "}"
                 else:
                     model_cell = ""
+                if row['Method'] == 'Oracle':
+                    body += " \cmidrule{2-9}"
                 row_cells = [model_cell, latex_escape(row["Method"])]
                 for ds in datasets:
                     row_cells.append(latex_escape(row[f"{ds} Corr."]))
@@ -712,7 +722,7 @@ class WorkloadEvaluator:
                     }
                     """
                     print("summary_stats", summary_stats)   
-                    summary_stats = self.bold_extreme_values(summary_stats, extreme='max')
+                    #summary_stats = self.bold_extreme_values(summary_stats, extreme='max')
                     latex_table_helper_list.append({
                         "dataset": ds,  
                         "technique": tech,
@@ -790,8 +800,9 @@ class WorkloadEvaluator:
             aggregated[key]['MSE_std']    /= counts[key]
 
         table_rows = []
-        all_datasets = sorted({entry['dataset'] for entry in data})
-        all_techniques = sorted({entry['technique'] for entry in data})
+        all_datasets = self.datasets #sorted({entry['dataset'] for entry in data})
+        all_techniques = self.techniques # sorted({entry['technique'] for entry in data})
+
         for ds in all_datasets:
             for tech in all_techniques:
                 if tech == None:
@@ -834,7 +845,7 @@ class WorkloadEvaluator:
         latex_lines.append("")
         latex_lines.append("    \\begin{tabular}{llccc}")
         latex_lines.append("    \\toprule")
-        latex_lines.append("    \\textbf{Dataset} & \\textbf{Technique} & \\textbf{Mean JSD} & \\textbf{Mean Correlation} & \\textbf{Mean MSE} \\\\")
+        latex_lines.append("    \\textbf{Dataset} & \\textbf{Technique} & \\textbf{Mean JSD $\\downarrow$}  & \\textbf{Mean Correlation $\\uparrow$} & \\textbf{Mean MSE $\\downarrow$} \\\\")
         latex_lines.append("    \\midrule")
         
         dataset_keys = list(grouped_rows.keys())
@@ -842,6 +853,8 @@ class WorkloadEvaluator:
             rows = grouped_rows[ds]
             n_rows = len(rows)
             for j, row in enumerate(rows):
+                if row['Technique'] == 'Oracle':
+                    latex_lines.append(" \\cmidrule{2-5}")
                 if j == 0:
                     latex_lines.append(f"    \\multirow{{{n_rows}}}{{*}}{{{row['Dataset']}}} & {row['Technique']} & {row['Mean JSD']} & {row['Mean Correlation']} & {row['Mean MSE']} \\\\")
                 else:
@@ -850,7 +863,7 @@ class WorkloadEvaluator:
                 latex_lines.append("    \\midrule")
         latex_lines.append("    \\bottomrule")
         latex_lines.append("    \\end{tabular}")
-        models_used = sorted({entry['model'] for entry in data})
+        models_used = sorted({self.mapping_helper[entry['model']] for entry in data})
         models_str = ", ".join(models_used)
         latex_lines.append(f"        \\caption{{Aggregated Mean Results (averaged over {models_str})}}")
         latex_lines.append("    \\label{table:results_jsd_correlation_mse}")
@@ -1167,9 +1180,11 @@ class WorkloadEvaluator:
                 except Exception:
                     print(f"Failed to convert cell to float: {cell}")
                     return None
-
+        #print(df)
+        df_methods = df.loc[df['Technique'] != 'Oracle', :]
+        
         for col in value_cols:
-            numeric_vals = [get_numeric(cell) for cell in df[col] if get_numeric(cell) is not None]
+            numeric_vals = [get_numeric(cell) for cell in df_methods[col] if get_numeric(cell) is not None]
             if not numeric_vals:
                 continue
 
@@ -1485,11 +1500,13 @@ class WorkloadEvaluator:
             raise FileNotFoundError(f"The DataFrame file {df_path} does not exist.")
         df = pd.read_csv(df_path)
         # Debug:
+        plt.figure(figsize = (8,3.3))
         print(f"DEBUG plot_histrogram for df: {workload_name} with column: {column} -> Min: {df['entropy_agreement'].min()}, Mean: {df['entropy_agreement'].mean()}, Max: {df['entropy_agreement'].max()}")
         plt.hist(df[column], bins=bins,  edgecolor='black')
-        plt.title(title)
+        #plt.title(title)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
+        #plt.xlim((0,1.6))
         if save:
             save_path = os.path.join(os.getcwd(),'analysis_results', 'plots', f"histogram_{workload_name}_{column}.png")
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
@@ -1511,7 +1528,7 @@ if __name__ == "__main__":
 
 
 
-    # this fixes a bug, baseline must be the first technique since it provides the pivot value ....
+    # revert back to sorting, it will always be: baseine, DE, LS, MCD, Oracle
     techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
@@ -1539,8 +1556,8 @@ if __name__ == "__main__":
             evaluator.plot_histrogram("entropy_agreement",
                 workload_name,
                 f"Histogram of {dataset}", 
-                "Entropy Annotator Agreement", 
-                "Frequency", 
+                "Label Ambiguity Score", 
+                "Number of samples", 
                 bins=15,
                 show=False,
                 save=True)
