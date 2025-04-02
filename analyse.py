@@ -1180,8 +1180,12 @@ class WorkloadEvaluator:
                 except Exception:
                     print(f"Failed to convert cell to float: {cell}")
                     return None
-        #print(df)
-        df_methods = df.loc[df['Technique'] != 'Oracle', :]
+        print(df)
+        
+        if '\\textbf{Technique}' in df:
+            df_methods = df.loc[df['\\textbf{Technique}'] != 'Oracle', :]
+        else:
+            df_methods = df.loc[df['Technique'] != 'Oracle', :]
         
         for col in value_cols:
             numeric_vals = [get_numeric(cell) for cell in df_methods[col] if get_numeric(cell) is not None]
@@ -1514,7 +1518,25 @@ class WorkloadEvaluator:
             plt.show()
         plt.close()
 
-
+    def plot_histrogram_on_train(self, column, workload_name, title, xlabel, ylabel, bins=10,show=True, save=False):
+        # TODO put this into the plotting Class
+        base_path = os.path.join(os.getcwd(), "workload_all_train_ds")
+        df_path = os.path.join(base_path, workload_name + ".csv") # this could be a parameter
+        if not os.path.exists(df_path):
+            raise FileNotFoundError(f"The DataFrame file {df_path} does not exist.")
+        df = pd.read_csv(df_path)
+        # Debug:
+        print(f"DEBUG plot_histrogram for df: {workload_name} with column: {column} -> Min: {df['entropy_agreement'].min()}, Mean: {df['entropy_agreement'].mean()}, Max: {df['entropy_agreement'].max()}")
+        plt.hist(df[column], bins=bins,  edgecolor='black')
+        plt.title(title)
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        if save:
+            save_path = os.path.join(os.getcwd(),'analysis_results', 'plots', f"histogram_train_ds_{workload_name}_{column}.png")
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        if show:
+            plt.show()
+        plt.close()
 
 if __name__ == "__main__":
     
@@ -1544,6 +1566,8 @@ if __name__ == "__main__":
     #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel() # this is called twice, so keep it out of the main function ...
     evaluator.prove_of_concept_ambiguity_sample_detection_combined_ROC(text_scale=1.5) # this could be merged with the other ROC plotting ... 
     
+    # be sure there was no exception thrown, otherwise we may miss results
+    print("All done, check saved results in the analysis_results folder.")
     
     # model and technique provide the same human annotator entroy, therefore just go over a random model and technique, also the runs
     # we load the test dataset, and plot the histogram of the entropy agreement
@@ -1553,7 +1577,7 @@ if __name__ == "__main__":
     for dataset in datasets:
         for run in range(1, 2):
             workload_name = f"{model}_{dataset}_{technique}_{run}"
-            evaluator.plot_histrogram("entropy_agreement",
+            evaluator.plot_histrogram("entropy_agreement", # entropy_all,entropy_tag, entropy_agreement
                 workload_name,
                 f"Histogram of {dataset}", 
                 "Label Ambiguity Score", 
@@ -1561,3 +1585,4 @@ if __name__ == "__main__":
                 bins=15,
                 show=False,
                 save=True)
+
