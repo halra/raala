@@ -1556,8 +1556,8 @@ if __name__ == "__main__":
             evaluator.plot_histrogram("entropy_agreement",
                 workload_name,
                 f"Histogram of {dataset}", 
-                "Entropy Annotator Agreement", 
-                "Frequency", 
+                "Label Ambiguity Score", 
+                "Number of samples", 
                 bins=15,
                 show=False,
                 save=True)
