@@ -1506,7 +1506,7 @@ class WorkloadEvaluator:
         #plt.title(title)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
-        plt.xlim((0,1.6))
+        #plt.xlim((0,1.6))
         if save:
             save_path = os.path.join(os.getcwd(),'analysis_results', 'plots', f"histogram_{workload_name}_{column}.png")
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
