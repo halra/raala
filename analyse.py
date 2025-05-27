@@ -118,12 +118,12 @@ class WorkloadEvaluator:
         else:
             probabilities = np.ones_like(probabilities) / len(probabilities)
 
-        return entropy(probabilities, base=2)
+        return entropy(probabilities)
 
     @staticmethod
     def compute_entropy_invert(row, label_columns):
         entropy_value = WorkloadEvaluator.compute_entropy(row, label_columns)
-        return 1 - entropy_value
+        return  entropy_value
 
 
     
@@ -1070,11 +1070,12 @@ class WorkloadEvaluator:
                     if tech == 'random':
                         plt.plot(fpr, tpr,  'k--', label=f"{tech.capitalize()} (AUC = {auc:.2f})")
                     else:
-                        plt.plot(fpr, tpr, label=f"{tech.capitalize()} (AUC = {auc:.2f})")
+                        plt.plot(fpr, tpr, label=f"{self.mapping_helper[tech]} (AUC = {auc:.2f})")
     
                 plt.xlabel('False Positive Rate', fontsize=14 * text_scale)
                 plt.ylabel('True Positive Rate', fontsize=14 * text_scale)
                 #plt.title('ROC Curves for Mean Runs of Each Technique', fontsize=16 * text_scale)
+                plt.tick_params(axis='both', which='major', labelsize=12 * text_scale)
                 plt.legend(fontsize=12 * text_scale)
                 plt.grid(True, ls="--", linewidth=0.5)
                 plt.tight_layout()
@@ -1523,7 +1524,7 @@ class WorkloadEvaluator:
         df = pd.read_csv(df_path)
         # Debug:
         plt.figure(figsize = (8,3.3))
-        print(f"DEBUG plot_histrogram for df: {workload_name} with column: {column} -> Min: {df['entropy_agreement'].min()}, Mean: {df['entropy_agreement'].mean()}, Max: {df['entropy_agreement'].max()}")
+        print(f"DEBUG plot_histrogram for df: {workload_name} with column: {column} -> Min: {df[column].min()}, Mean: {df[column].mean()}, Max: {df[column].max()}")
         plt.hist(df[column], bins=bins,  edgecolor='black')
         #plt.title(title)
         plt.xlabel(xlabel)
@@ -1544,10 +1545,10 @@ class WorkloadEvaluator:
             raise FileNotFoundError(f"The DataFrame file {df_path} does not exist.")
         df = pd.read_csv(df_path)
         # Debug:
-        print(f"DEBUG plot_histrogram for df: {workload_name} with column: {column} -> Min: {df['entropy_agreement'].min()}, Mean: {df['entropy_agreement'].mean()}, Max: {df['entropy_agreement'].max()}")
+        print(f"DEBUG plot_histrogram (train) for df: {workload_name} with column: {column} -> Min: {df[column].min()}, Mean: {df[column].mean()}, Max: {df[column].max()}")
+        plt.figure(figsize = (8,3.3))
         plt.hist(df[column], bins=bins,  edgecolor='black')
         #plt.title(title)
-        plt.figure(figsize = (8,3.3))
         plt.xlabel(xlabel, fontsize=12)
         plt.ylabel(ylabel, fontsize=12)
         if save:
@@ -1556,6 +1557,30 @@ class WorkloadEvaluator:
         if show:
             plt.show()
         plt.close()
+
+
+
+
+    def evaluate_entropy_thresholds(self, df, column='entropy_agreement'):
+
+        total_rows = len(df)
+        threshold_60_percentile = df[column].quantile(0.60)
+        threshold_60_max = 0.60 * df[column].max()
+        count_percentile = (df[column] >= threshold_60_percentile).sum()
+        count_max = (df[column] >= threshold_60_max).sum()
+        percentage_percentile = (count_percentile / total_rows) * 100
+        percentage_max = (count_max / total_rows) * 100
+
+        print("60th Percentile Threshold Approach:")
+        print(f"Threshold: {threshold_60_percentile:.4f}")
+        print(f"Rows with '{column}' >= threshold: {count_percentile} / {total_rows} ({percentage_percentile:.2f}%)")
+        print("\n60% of Maximum Value Threshold Approach:")
+        print(f"Threshold: {threshold_60_max:.4f}")
+        print(f"Rows with '{column}' >= threshold: {count_max} / {total_rows} ({percentage_max:.2f}%)")
+        print(60* "=")
+
+
+
 
 if __name__ == "__main__":
     start_time = time.time()
@@ -1574,13 +1599,261 @@ if __name__ == "__main__":
     techniques.sort(key=lambda t: 0 if t.lower() == 'baseline' else 1)
 
     evaluator = WorkloadEvaluator(models, datasets, techniques, num_runs, enable_plotting)
+    
+    
+    
+    ### START new for III
+    import pandas as pd
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from itertools import combinations
+
+    HUMAN_TH   = 0.30           
+    TOP_K      = 10            
+    FIG_PATH   = "emotion_pair_heatmaps.png"
+
+    EMOTIONS = [
+        "sadness", "neutral", "love", "gratitude",
+        "disapproval", "amusement", "admiration",
+        "annoyance", "approval"
+    ]
+
+    models     = ["bert"]
+    datasets   = ["go_emotions"] # go_emotions
+    techniques = ['baseline']
+    runs       = [1]
+
+    top_ids, unc_scores, top_texts = {}, {}, {}
+    for tech in techniques:
+        wl_name = f"{models[0]}_{datasets[0]}_{tech}_{runs[0]}"
+        #print(f"Loading workload: {wl_name}")
+        wl      = Workload.load(wl_name, load_models=False, quiet=True)
+        df      = wl.df.set_index("id")
+
+    human_labels = []
+    for _, row in df.iterrows():
+        labs = [emo for emo in EMOTIONS if row[f"{emo}_probability"] >= HUMAN_TH]
+        human_labels.append(labs)
+
+    n_cls = len(EMOTIONS)
+    co_mat = np.zeros((n_cls, n_cls), dtype=int)
+    emo2idx = {e: i for i, e in enumerate(EMOTIONS)}
+
+    for labs in human_labels:
+        labs = list(set(labs))
+        for a, b in combinations(labs, 2):
+            ia, ib = emo2idx[a], emo2idx[b]
+            co_mat[ia, ib] += 1
+            co_mat[ib, ia] += 1
+        for a in labs:                         
+            co_mat[emo2idx[a], emo2idx[a]] += 1
+
+    co_df = pd.DataFrame(co_mat, index=EMOTIONS, columns=EMOTIONS)
+
+    co_pairs = (
+        co_df.where(~np.eye(n_cls, dtype=bool))
+            .stack()
+            .reset_index(name="count")
+            .rename(columns={"level_0": "emo_a", "level_1": "emo_b"})
+            .sort_values("count", ascending=False)
+    )
+    top_co = co_pairs.head(TOP_K)
+
+    df["primary_human"] = df[[f"{e}_probability" for e in EMOTIONS]].idxmax(axis=1)
+    df["primary_human"] = df["primary_human"].str.replace("_probability", "")
+
+    df["model_pred"] = df[[f"{e}_probability_model" for e in EMOTIONS]].idxmax(axis=1)
+    df["model_pred"] = df["model_pred"].str.replace("_probability_model", "")
+
+    conf_mat = pd.crosstab(df["primary_human"], df["model_pred"])
+    conf_mat = conf_mat.reindex(index=EMOTIONS, columns=EMOTIONS, fill_value=0)
+
+    conf_pairs = (
+        conf_mat.where(~np.eye(n_cls, dtype=bool))
+                .stack()
+                .reset_index(name="count")
+                .rename(columns={"level_0": "true", "level_1": "pred"})
+                .sort_values("count", ascending=False)
+    )
+    top_conf = conf_pairs.head(TOP_K)
+
+    conf_pairs = (
+        conf_mat.where(~np.eye(n_cls, dtype=bool))
+                .stack()
+                .reset_index()
+    )
+    conf_pairs.columns = ["true", "pred", "count"]  
+    conf_pairs = conf_pairs.sort_values("count", ascending=False)
+    top_conf   = conf_pairs.head(TOP_K)
+
+    co_pairs = (
+        co_df.where(~np.eye(n_cls, dtype=bool))
+            .stack()
+            .reset_index()
+    )
+    co_pairs.columns = ["emo_a", "emo_b", "count"]   # rename
+    co_pairs = co_pairs.sort_values("count", ascending=False)
+    top_co   = co_pairs.head(TOP_K)
+
+
+    print(f"\nTop-{TOP_K} classifier confusion pairs:")
+    for _, r in top_conf.iterrows():
+        print(f"{r['true']:>12s} ↔ {r['pred']:<12s}  {r['count']:5f}")
+
+    print(f"\nTop-{TOP_K} human co-occurrence pairs:")
+    for _, r in top_co.iterrows():
+        print(f"{r['emo_a']:>12s} ↔ {r['emo_b']:<12s}  {r['count']:5f}")
+
+
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    im0 = axes[0].imshow(conf_mat.values, cmap="viridis", aspect="auto")
+    axes[0].set_title("Classifier Confusion Matrix")
+    axes[0].set_xlabel("Predicted emotion")
+    axes[0].set_ylabel("Human annotated emotion")
+
+    im1 = axes[1].imshow(co_df.values, cmap="viridis", aspect="auto")
+    axes[1].set_title("Human Annotation Co-occurrence")
+    axes[1].set_xlabel("Emotion"); axes[1].set_ylabel("Emotion")
+
+    for ax in axes:
+        ax.set_xticks(np.arange(n_cls))
+        ax.set_yticks(np.arange(n_cls))
+        ax.set_xticklabels(EMOTIONS, rotation=90, fontsize=6)
+        ax.set_yticklabels(EMOTIONS, fontsize=6)
+
+    fig.colorbar(im0, ax=axes[0], fraction=0.046, pad=0.04)
+    fig.colorbar(im1, ax=axes[1], fraction=0.046, pad=0.04)
+    fig.tight_layout()
+    plt.savefig(FIG_PATH, dpi=300)
+    plt.show()
+
+    print(f"\nSaved heat-maps to {FIG_PATH}")
+    
+    exit(0) 
+    ### END new for III
+    
+    
+    
+    ### START new for II
         
-    evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
-    evaluator.ambiguity_human_vs_models_correlation()
-    evaluator.scatter_plot_correlation_user_vs_models_entropy()
-    evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
-    evaluator.calculate_JSD_MSE_CORR()
-    evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60, text_scale=1.0, use_random_evaluation = True)
+    from itertools import combinations
+    import pandas as pd
+    from scipy.stats import spearmanr
+
+    models     = ["bert"]
+    datasets   = ["rt"] # go_emotions
+    techniques = ['mc', 'smoothing', 'de']
+    runs       = [1]
+    K          = 100
+    score_col  = "entropy_all" # "variance_tag", "entropy_all", "jsd"
+
+    top_ids, unc_scores, top_texts = {}, {}, {}
+    for tech in techniques:
+        wl_name = f"{models[0]}_{datasets[0]}_{tech}_{runs[0]}"
+        #print(f"Loading workload: {wl_name}")
+        wl      = Workload.load(wl_name, load_models=False, quiet=True)
+        df      = wl.df.set_index("id")
+
+        top                = df.nlargest(K, score_col)
+        top_ids[tech]      = set(top.index)
+        unc_scores[tech]   = df[score_col].sort_index()
+        top_texts[tech]    = top["text"]
+        
+    #print(unc_scores)
+
+    all_overlap = set.intersection(*top_ids.values())
+    
+    jac_matrix = pd.DataFrame(index=techniques, columns=techniques, dtype=float)
+    for a, b in combinations(techniques, 2):
+        j = len(top_ids[a] & top_ids[b]) / len(top_ids[a] | top_ids[b])
+        jac_matrix.loc[a, b] = jac_matrix.loc[b, a] = j
+    jac_mean = jac_matrix.stack().mean()
+    jac_std  = jac_matrix.stack().std()
+    
+    def aligned_rho(s1, s2):
+        s1a, s2a = s1.align(s2, join="inner")
+        ok       = s1a.notna() & s2a.notna()
+        return spearmanr(s1a[ok], s2a[ok]).correlation if ok.sum() > 1 else None
+
+    rho_matrix = pd.DataFrame(index=techniques, columns=techniques, dtype=float)
+    for a, b in combinations(techniques, 2):
+        r = aligned_rho(unc_scores[a], unc_scores[b])
+        rho_matrix.loc[a, b] = rho_matrix.loc[b, a] = r
+    rho_mean = rho_matrix.stack().mean()
+    rho_std  = rho_matrix.stack().std()
+
+
+    unique_share = {
+        t: len(top_ids[t] - set.union(*[top_ids[x] for x in techniques if x != t])) / K
+        for t in techniques
+    }
+
+    jac_matrix.to_csv("appendixF_jaccard_matrix.csv", float_format="%.4f")
+    rho_matrix.to_csv("appendixF_spearman_matrix.csv", float_format="%.4f")
+
+    pd.concat(
+        {
+            t: top_texts[t].rename("text")
+            for t in techniques
+        },
+        axis=1
+    ).to_csv("appendixF_top100_sentences.csv", index_label="id")
+
+    print(f"Top-{K} common to ALL lists : {len(all_overlap)} ({len(all_overlap)/K:.0%})")
+    print(f"Mean ± SD Jaccard           : {jac_mean:.2f} ± {jac_std:.2f}")
+    print(f"Mean ± SD Spearman ρ        : {rho_mean:.2f} ± {rho_std:.2f}")
+    for t, p in unique_share.items():
+        print(f"Unique to {t:10s}: {p:4.0%} of its top-{K}")
+
+    count_matrix = pd.DataFrame(index=techniques, columns=techniques, dtype=int)
+
+    for a in techniques:
+        for b in techniques:
+            count_matrix.loc[a, b] = len(top_ids[a] & top_ids[b])   # ∩ size
+
+    count_matrix.to_csv("appendixF_pairwise_overlap_counts.csv")
+
+    print(f"Top-{K} common to ALL lists : {len(all_overlap)} ({len(all_overlap)/K:.0%})")
+    print(f"Mean ± SD Jaccard           : {jac_mean:.2f} ± {jac_std:.2f}")
+    print(f"Mean ± SD Spearman ρ        : {rho_mean:.2f} ± {rho_std:.2f}")
+    print("\nPair-wise overlap counts (top-K):")
+    print(count_matrix)
+    for t, p in unique_share.items():
+        print(f"Unique to {t:10s}: {p:4.0%} of its top-{K}")
+
+
+
+    if True:  
+        exit()
+    ### END new
+    
+    
+    
+    model = models[0]      
+    technique = techniques[3] 
+    for dataset in datasets:
+        for run in range(1, 2):
+            workload_name = f"{model}_{dataset}_{technique}_{run}"
+            workload = Workload.load(
+            workload_name=workload_name,
+            load_models=False,
+            quiet=True  
+                        )
+            print(f"Loaded workload: {workload_name}")
+            column = 'entropy_agreement' # 'entropy_mean_prediction', 'mean_variance', 'mean_jsd', 'entropy_agreement'
+            evaluator.evaluate_entropy_thresholds(workload.df, column=column)
+    
+    
+    #exit()
+    
+    #evaluator.calculate_evaluation_metrics_for_base(print_latex=False)
+    #evaluator.ambiguity_human_vs_models_correlation()
+    #evaluator.scatter_plot_correlation_user_vs_models_entropy()
+    #evaluator.scatter_plot_correlation_user_vs_models_entropy_combined()
+    #evaluator.calculate_JSD_MSE_CORR()
+    evaluator.proof_of_concept_ambiguity_sample_detection(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60, text_scale=1.4, use_random_evaluation = True)
     evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel(threshold_range_start = 60, threshold_range_end = 60, threshold_agreement_start = 60, threshold_agreement_end = 60)
 
     #evaluator.proof_of_concept_ambiguity_sample_detection_latex_tabel() # this is called twice, so keep it out of the main function ...
@@ -1622,6 +1895,7 @@ if __name__ == "__main__":
             
     # some extra info, runtime takes ages so lets measure it
     elapsed = time.time() - start_time
+    #https://www.w3schools.com/python/ref_func_divmod.asp
     hours, rest = divmod(elapsed, 3600)
     minutes, seconds = divmod(rest, 60)
     print(f"Total execution time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds")
